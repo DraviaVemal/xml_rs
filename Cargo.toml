@@ -1,13 +1,8 @@
-[package]
-name = "draviavemal-xml_rs"
-version = "0.1.0"
-edition = "2021"
-readme = "./README.md"
-keywords = ["xml", "xml-rs", "dom"]
-categories = ["filesystem", "development-tools"]
-license = "Sponsorware License"
-authors = ["Dravia Vemal <contact@draviavemal.com>"]
+[workspace]
+members = ["lib", "tests"]
 
-[dependencies]
-anyhow.workspace = true
-quick-xml.workspace = true
+[workspace.dependencies]
+anyhow = "1.0.90"
+quick-xml = "0.37.0"
+criterion = "0.7.0"
+draviavemal-xml_rs = { path = "lib" }
