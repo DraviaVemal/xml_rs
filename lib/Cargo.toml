@@ -1,0 +1,17 @@
+[package]
+name = "draviavemal-xml_rs"
+version = "0.1.0"
+edition = "2021"
+readme = "../README.MD"
+keywords = ["xml", "xml-rs", "dom"]
+categories = ["filesystem", "development-tools"]
+license = "AGPL-3.0-only"
+repository = "https://github.com/DraviaVemal/xml_rs"
+documentation = "https://github.com/DraviaVemal/xml_rs"
+homepage = "https://github.com/DraviaVemal/xml_rs"
+description = "A lightweight XML library"
+authors = ["Dravia Vemal <contact@draviavemal.com>"]
+
+[dependencies]
+anyhow.workspace = true
+quick-xml.workspace = true

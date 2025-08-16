@@ -1,0 +1,43 @@
+# RustRover
+**/.idea
+
+# Rust specific
+/target/
+**/*.rs.bk
+*_generated.rs
+
+# macOS generated files
+.DS_Store
+.AppleDouble
+.LSOverride
+.dylib
+
+# Windows generated files
+Thumbs.db
+Desktop.ini
+.dll
+
+# Linux generated files
+*.out
+*.dSYM/
+.so
+
+# Logs and databases
+*.log
+*.env
+*.bak
+*.db
+
+# IDE/editor specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.orig
+*.bak
+
+# Rust
+target
+
+# Test Coverage
+coverage

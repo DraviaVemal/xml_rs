@@ -1,0 +1,9 @@
+[test_config]
+name = "xml_rs"
+workspace = true
+force-clean = true
+count = true
+output-dir = "./coverage"
+engine = "Llvm"
+run-types = ["AllTargets"]
+out = ["Xml"]

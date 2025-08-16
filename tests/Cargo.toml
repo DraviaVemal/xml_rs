@@ -1,0 +1,17 @@
+[package]
+name = "xml_rs-test"
+version = "0.1.0"
+edition = "2021"
+readme = "./README.md"
+keywords = ["xml", "xml-rs", "dom"]
+categories = ["filesystem", "development-tools"]
+license = "Sponsorware License"
+authors = ["Dravia Vemal <contact@draviavemal.com>"]
+
+[dependencies]
+anyhow.workspace = true
+quick-xml.workspace = true
+draviavemal-xml_rs.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
