@@ -26,9 +26,4 @@ A high-performance, low-memory XML DOM parser for Rust — with **namespace-awar
 
 ## 📦 Installation
 
-Add to your `Cargo.toml`:
-
-```toml
-[dependencies]
-anyhow = "1.0.90"
-quick-xml = "0.37.0"
+`cargo add draviavemal-xml_rs`
