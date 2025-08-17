@@ -1,3 +1,10 @@
+/*
+ * This file is part of the xml_rs project.
+ * License: AGPL-3.0 (see ./LICENSE for details).
+ * - Free for non-commercial/open source use under AGPL-3.0.
+ * - Commercial use requires a separate license.
+ */
+
 use crate::{log_elapsed, NodeId, XmlAttribute, XmlDocument, XmlElementContentType};
 use anyhow::{Context, Error as AnyError, Result as AnyResult};
 use quick_xml::{events::BytesStart, events::Event, NsReader};
@@ -6,7 +13,6 @@ use std::{fs, io::Cursor};
 pub struct XmlDeserializer {}
 
 impl XmlDeserializer {
-    
     pub fn file_to_xml_doc_tree(file_path: &str) -> AnyResult<XmlDocument, AnyError> {
         let xml_str = fs::read(file_path).context("Failed to read XML file")?;
         Self::vec_to_xml_doc_tree(xml_str)
