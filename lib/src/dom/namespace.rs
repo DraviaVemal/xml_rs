@@ -8,64 +8,85 @@
 use crate::XmlAttribute;
 use std::collections::HashMap;
 
+/// Manages XML namespace mappings between aliases (prefixes) and URLs.
+///
+/// This struct provides bidirectional mapping between namespace prefixes and their
+/// corresponding URLs, allowing for efficient lookups in both directions.
 #[derive(Debug)]
 pub struct XmlNamespace {
+    /// Maps from namespace alias to URL
     url_alias: HashMap<String, String>,
+    /// Maps from namespace URL to alias
     alias_url: HashMap<String, String>,
 }
 
 impl XmlNamespace {
-    /// Add a mapping from alias to URL and vice versa.
+    // --------------------------
+    // pub(crate) mut self methods
+    // --------------------------
+
+    /// Adds a mapping from alias to URL and vice versa.
     ///
     /// # Arguments
     /// * `alias` - The namespace alias (prefix).
     /// * `url` - The namespace URI.
     pub(crate) fn add_url_alias_mut(&mut self, alias: String, url: String) {
-        // Insert both directions for fast lookup
+        // Insert both directions for bidirectional lookup capability
         self.url_alias.insert(alias.clone(), url.clone());
         self.alias_url.insert(url, alias);
     }
 
-    /// Add a namespace from an XmlAttribute (usually an xmlns attribute).
+    /// Adds a namespace from an XML attribute (usually an xmlns attribute).
     ///
     /// # Arguments
-    /// * `ns_attribute` - The attribute representing the namespace.
+    /// * `ns_attribute` - The attribute representing the namespace declaration.
     pub(crate) fn add_namespace_mut(&mut self, ns_attribute: XmlAttribute) {
+        // Extract the namespace name and URL from the attribute
         let ns_name = ns_attribute.get_ns_name();
         let url = ns_attribute.get_value().to_string();
+        
+        // Add the mapping
         self.add_url_alias_mut(ns_name, url);
     }
 }
 
 impl XmlNamespace {
-    /// Get the namespace URL for a given alias.
+    // --------------------------
+    // pub(crate) self methods
+    // --------------------------
+
+    /// Gets the namespace URL for a given alias.
     ///
     /// # Arguments
-    /// * `alias` - The namespace alias.
+    /// * `alias` - The namespace alias/prefix.
     ///
     /// # Returns
-    /// * `Option<&String>` - The namespace URL if found.
+    /// * `Option<&String>` - The namespace URL if the alias is found, None otherwise.
     pub(crate) fn get_url(&self, alias: &str) -> Option<&String> {
         self.url_alias.get(alias)
     }
 
-    /// Get the namespace alias for a given URL.
+    /// Gets the namespace alias for a given URL.
     ///
     /// # Arguments
     /// * `url` - The namespace URL.
     ///
     /// # Returns
-    /// * `Option<&String>` - The alias if found.
+    /// * `Option<&String>` - The alias/prefix if the URL is found, None otherwise.
     pub(crate) fn get_alias(&self, url: &str) -> Option<&String> {
         self.alias_url.get(url)
     }
 }
 
 impl XmlNamespace {
-    /// Create a new, empty namespace context.
+    // --------------------------
+    // pub(crate) constructor
+    // --------------------------
+
+    /// Creates a new, empty namespace context.
     ///
     /// # Returns
-    /// * `XmlNamespace` - An empty namespace context.
+    /// * `XmlNamespace` - An empty namespace context with no mappings.
     pub(crate) fn new() -> Self {
         XmlNamespace {
             url_alias: HashMap::new(),
