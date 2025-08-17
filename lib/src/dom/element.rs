@@ -7,6 +7,7 @@
 
 use crate::{utils::validation, NodeId, XmlAttribute, XmlNamespace};
 use anyhow::Error as AnyError;
+use quick_xml::escape::escape;
 use std::{cell::RefCell, rc::Rc};
 
 /// Represents the different types of content that can be contained within an XML element.
@@ -116,7 +117,7 @@ impl XmlElement {
     /// # Arguments
     /// * `text` - The text content to add.
     pub fn add_text_mut(&mut self, text: String) {
-        self.add_content_mut(XmlElementContentType::Text(text));
+        self.add_content_mut(XmlElementContentType::Text(escape(text).to_string()));
     }
 
     /// Adds a comment node to this element's contents.
@@ -124,7 +125,7 @@ impl XmlElement {
     /// # Arguments
     /// * `comment` - The comment text to add.
     pub fn add_comments_mut(&mut self, comment: String) {
-        self.add_content_mut(XmlElementContentType::Comment(comment));
+        self.add_content_mut(XmlElementContentType::Comment(escape(comment).to_string()));
     }
 }
 
@@ -386,7 +387,7 @@ impl XmlElement {
         // Validate that the tag name follows XML naming rules
         if validation::is_valid_xml_name(&tag) {
             // Validate that all attribute names follow XML naming rules
-            if let Some(attributes) = attributes.as_ref() {
+            let filtered_attributes = if let Some(mut attributes) = attributes {
                 if !attributes
                     .iter()
                     .all(|attribute| validation::is_valid_xml_name(&attribute.get_ns_name()))
@@ -395,7 +396,6 @@ impl XmlElement {
                 }
 
                 // Process namespace declarations (xmlns attributes)
-                let mut attributes = attributes.clone();
                 let mut namespaces = Vec::new();
 
                 // Extract namespace declarations from attributes
@@ -418,7 +418,10 @@ impl XmlElement {
                         namespace_context.borrow_mut().add_namespace_mut(namespace);
                     }
                 }
-            }
+                Some(attributes)
+            } else {
+                None
+            };
 
             // Parse the tag for namespace prefix
             let (ns_alias, tag) = if let Some(pos) = tag.find(':') {
@@ -432,7 +435,7 @@ impl XmlElement {
             Ok(XmlElement {
                 id: 0, // Initial ID, will be set by document
                 tag,
-                attributes,
+                attributes: filtered_attributes,
                 parent_id: None,
                 contents: None,
                 ns_alias,

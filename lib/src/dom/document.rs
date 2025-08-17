@@ -63,18 +63,18 @@ impl XmlDocument {
         // Generate a new unique ID for the element
         self.running_id += 1;
         let node_id = self.running_id;
-        
+
         // Create the element with a new namespace context
         let mut element =
             XmlElement::new(tag, attributes, Rc::new(RefCell::new(XmlNamespace::new())))
                 .context("Failed to create element")?;
-        
+
         // Set the element's ID
         element.set_id_mut(node_id);
-        
+
         // Add the element to the collection
         self.xml_element_collection.insert(node_id, element);
-        
+
         Ok(node_id)
     }
 
@@ -96,30 +96,46 @@ impl XmlDocument {
         // Generate a new unique ID for the element
         self.running_id += 1;
         let node_id = self.running_id;
-        
+
         // Get the namespace context from the parent element
         let ns_context = self
             .get_element(parent_id)
             .context("Failed to pull parent element")?
             .get_ns_context();
-        
+
         // Create the child element with the parent's namespace context
         let mut child_element = XmlElement::new(tag.to_string(), attributes, ns_context)
             .context("Failed to create child element")?;
-        
+
         // Set the element's ID and parent ID
         child_element.set_id_mut(node_id);
         child_element.set_parent_id_mut(parent_id.clone());
-        
+
         // Add the child element to the collection
         self.add_element(node_id, child_element);
-        
+
         // Add the child to the parent's contents
         self.get_element_mut(parent_id)
             .context("Parent element not found")?
             .add_child_mut(node_id, tag.to_string());
-        
+
         Ok(node_id)
+    }
+
+    /// Gets a mutable reference to an element by node ID.
+    ///
+    /// # Arguments
+    /// * `active_xml_element_id` - The node ID to look up.
+    ///
+    /// # Returns
+    /// * `Result<&mut XmlElement, AnyError>` - Mutable reference to the element or an error if not found.
+    pub fn get_element_mut(
+        &mut self,
+        active_xml_element_id: NodeId,
+    ) -> Result<&mut XmlElement, AnyError> {
+        self.xml_element_collection
+            .get_mut(&active_xml_element_id)
+            .context("Get Element mut not found")
     }
 
     /// Clears the content of an element, removing all children.
@@ -132,12 +148,12 @@ impl XmlDocument {
     pub fn clear_element_content_mut(&mut self, element_id: NodeId) -> Result<(), AnyError> {
         // Remove all child elements from the document
         self.clear_element_subtree_mut(element_id)?;
-        
+
         // Clear the element's content
         self.get_element_mut(element_id)
             .context("Failed to get element")?
             .clear_content_mut();
-        
+
         Ok(())
     }
 }
@@ -181,7 +197,7 @@ impl XmlDocument {
     pub fn get_element(&self, active_xml_element_id: NodeId) -> Result<&XmlElement, AnyError> {
         self.xml_element_collection
             .get(&active_xml_element_id)
-            .context("Element not found")
+            .context("Get Element not found")
     }
 
     /// Creates a clone of the document.
@@ -351,7 +367,7 @@ impl XmlDocument {
         attr_value: &str,
     ) -> Result<Option<Vec<NodeId>>, AnyError> {
         let mut result = Vec::new();
-        
+
         // Check if the parent element has contents
         if let Some(contents) = self
             .get_element(parent_id)
@@ -372,7 +388,7 @@ impl XmlDocument {
                 }
             }
         }
-        
+
         // Return None if no matching children found
         if result.is_empty() {
             Ok(None)
@@ -426,14 +442,14 @@ impl XmlDocument {
                 });
             }
         }
-        
+
         // Remove all descendant elements recursively
         self.clear_element_subtree_mut(element_id)
             .context("Failed to clean up child element tree")?;
-        
+
         // Remove the element itself from the collection
         self.xml_element_collection.remove(&element_id);
-        
+
         Ok(())
     }
 }
@@ -466,22 +482,6 @@ impl XmlDocument {
         self.xml_element_collection.insert(id, element);
     }
 
-    /// Gets a mutable reference to an element by node ID.
-    ///
-    /// # Arguments
-    /// * `active_xml_element_id` - The node ID to look up.
-    ///
-    /// # Returns
-    /// * `Result<&mut XmlElement, AnyError>` - Mutable reference to the element or an error if not found.
-    pub(crate) fn get_element_mut(
-        &mut self,
-        active_xml_element_id: NodeId,
-    ) -> Result<&mut XmlElement, AnyError> {
-        self.xml_element_collection
-            .get_mut(&active_xml_element_id)
-            .context("Element not found")
-    }
-
     /// Sets the XML version string.
     ///
     /// # Arguments
@@ -497,12 +497,12 @@ impl XmlDocument {
     pub(crate) fn set_encoding_mut(&mut self, encoding: String) {
         self.encoding = encoding
     }
-    
+
     /// Recursively removes all descendant elements present in the contents of the given element.
     ///
     /// # Arguments
     /// * `element_id` - The ID of the element whose entire subtree should be cleared.
-    /// 
+    ///
     /// # Returns
     /// * `Result<(), AnyError>` - Success or an error.
     pub(crate) fn clear_element_subtree_mut(&mut self, element_id: NodeId) -> Result<(), AnyError> {
