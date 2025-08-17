@@ -108,13 +108,31 @@ impl XmlSerializer {
     /// * `element` - The element to build a tag for.
     ///
     /// # Returns
-    /// * `String` - The formatted tag string with attributes.
-    fn build_element(element: &XmlElement) -> String {
+    /// * `Result<String, AnyError>` - The formatted tag string with attributes.
+    fn build_element(element: &XmlElement) -> Result<String, AnyError> {
         let mut element_part = String::new();
 
         // Add the tag name with namespace if present
         element_part.push_str(&element.get_tag_ns());
 
+        // Add Namespace attributes
+        if element.has_namespace() {
+            let namespace_context = element.get_namespace_context();
+            let namespace = namespace_context
+                .try_borrow()
+                .context("Failed to borrow namespace context")?;
+            for (prefix, uri) in namespace.get_namespace_alias_url().iter() {
+                element_part.push_str(&format!(
+                    " xmlns{}=\"{}\"",
+                    if prefix.is_empty() {
+                        "".to_string()
+                    } else {
+                        format!(":{}", prefix).to_string()
+                    },
+                    uri
+                ));
+            }
+        }
         // Add attributes if present
         if let Some(attributes) = element.get_attributes() {
             for attribute in attributes {
@@ -127,7 +145,7 @@ impl XmlSerializer {
             }
         }
 
-        element_part
+        Ok(element_part)
     }
 
     /// Recursively builds the XML content for an element and its children.
@@ -150,21 +168,10 @@ impl XmlSerializer {
             .context("Failed to get element")?
             .clone_limited();
 
-        // Add Namespace attributes
-        if element.has_namespace() {
-            let namespace_context = element.get_namespace_context();
-            let namespace = namespace_context
-                .try_borrow()
-                .context("Failed to borrow namespace context")?;
-            for (prefix, uri) in namespace.get_namespace_alias_url().iter() {
-                content_part.push_str(&format!(" xmlns:{}=\"{}\"", prefix, uri));
-            }
-        }
-
         // Check if the element has contents
         if let Some(contents) = element.get_contents() {
             // Start tag with attributes
-            content_part.push_str(&format!("<{}>", Self::build_element(&element)));
+            content_part.push_str(&format!("<{}>", Self::build_element(&element)?));
 
             // Process each content item
             for content in contents {
@@ -192,7 +199,7 @@ impl XmlSerializer {
             }
         } else {
             // Self-closing tag for elements without content
-            content_part.push_str(&format!("<{}/>", Self::build_element(&element)));
+            content_part.push_str(&format!("<{}/>", Self::build_element(&element)?));
         }
 
         Ok(content_part)

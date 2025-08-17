@@ -5,8 +5,6 @@
  * - Commercial use requires a separate license.
  */
 
-pub(crate) const XML_NS_DEFAULT: &str = "<Default>";
-
 pub mod dom;
 pub(crate) mod macros;
 pub mod parser;

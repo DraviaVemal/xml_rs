@@ -18,9 +18,9 @@ pub type NsUrl = String;
 #[derive(Debug)]
 pub struct XmlNamespace {
     /// Maps from namespace alias to URL
-    url_alias: HashMap<NsAlias, NsUrl>,
+    url_alias: HashMap<NsUrl, NsAlias>,
     /// Maps from namespace URL to alias
-    alias_url: HashMap<NsUrl, NsAlias>,
+    alias_url: HashMap<NsAlias, NsUrl>,
 }
 
 impl XmlNamespace {
@@ -35,8 +35,8 @@ impl XmlNamespace {
     /// * `url` - The namespace URI.
     pub(crate) fn add_url_alias_mut(&mut self, alias: String, url: String) {
         // Insert both directions for bidirectional lookup capability
-        self.url_alias.insert(alias.clone(), url.clone());
-        self.alias_url.insert(url, alias);
+        self.alias_url.insert(alias.clone(), url.clone());
+        self.url_alias.insert(url, alias);
     }
 
     /// Adds a namespace from an XML attribute (usually an xmlns attribute).
@@ -45,7 +45,14 @@ impl XmlNamespace {
     /// * `ns_attribute` - The attribute representing the namespace declaration.
     pub(crate) fn add_namespace_mut(&mut self, ns_attribute: XmlAttribute) {
         // Extract the namespace name and URL from the attribute
-        let ns_name = ns_attribute.get_ns_name();
+        let ns_name = ns_attribute
+            .get_ns_name()
+            .split(":")
+            .map(|v| v.to_string())
+            .collect::<Vec<String>>()
+            .get(1)
+            .unwrap_or(&"".to_string())
+            .clone();
         let url = ns_attribute.get_value().to_string();
 
         // Add the mapping
@@ -66,7 +73,7 @@ impl XmlNamespace {
     /// # Returns
     /// * `Option<&String>` - The namespace URL if the alias is found, None otherwise.
     pub(crate) fn get_url(&self, alias: &str) -> Option<&String> {
-        self.url_alias.get(alias)
+        self.alias_url.get(alias)
     }
 
     /// Gets the namespace alias for a given URL.
@@ -77,7 +84,7 @@ impl XmlNamespace {
     /// # Returns
     /// * `Option<&String>` - The alias/prefix if the URL is found, None otherwise.
     pub(crate) fn get_alias(&self, url: &str) -> Option<&String> {
-        self.alias_url.get(url)
+        self.url_alias.get(url)
     }
 
     /// Returns a reference to the namespace context for this element.

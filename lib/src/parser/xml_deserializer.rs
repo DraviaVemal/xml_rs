@@ -155,7 +155,7 @@ impl XmlDeserializer {
                         .to_string();
                     xml_document
                         .get_element_mut(active_xml_element_id)
-                        .context("Getting Target Element Failed")?
+                        .context("Getting Target Element for text Failed")?
                         .add_content_mut(XmlElementContentType::Text(text));
                 }
                 
@@ -168,7 +168,7 @@ impl XmlDeserializer {
                         .to_string();
                     xml_document
                         .get_element_mut(active_xml_element_id)
-                        .context("Getting Target Element Failed")?
+                        .context("Getting Target Element for comments Failed")?
                         .add_content_mut(XmlElementContentType::Comment(comment));
                 }
                 
