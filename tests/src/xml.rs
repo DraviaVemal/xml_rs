@@ -104,11 +104,12 @@ mod xml_test {
             .expect("Failed to get first book");
 
         // It should have an id attribute
-        if let Some(attrs) = book1.get_attributes() {
-            let has_id = attrs
-                .iter()
-                .any(|attr| attr.get_name() == "id" && attr.get_value() == "bk101");
-            assert!(has_id, "First book should have id='bk101'");
+        if let Some(attr) = book1.get_attribute("id".to_string()) {
+            assert_eq!(
+                attr.get_value(),
+                "bk101",
+                "First book should have id='bk101'"
+            );
         } else {
             panic!("First book should have attributes");
         }
@@ -203,11 +204,8 @@ mod xml_test {
             .expect("Failed to get root element");
         assert_eq!(root.get_tag(), "root", "Root tag should be 'root'");
 
-        if let Some(attrs) = root.get_attributes() {
-            let has_version = attrs
-                .iter()
-                .any(|attr| attr.get_name() == "version" && attr.get_value() == "1.0");
-            assert!(has_version, "Root should have version='1.0'");
+        if let Some(attr) = root.get_attribute("version".to_string()) {
+            assert_eq!(attr.get_value(), "1.0", "Root should have version='1.0'");
         } else {
             panic!("Root should have attributes");
         }
