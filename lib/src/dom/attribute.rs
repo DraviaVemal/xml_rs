@@ -1,11 +1,7 @@
-// Copyright (c) DraviaVemal 2025
-// Licensed under the Sponsorware License v4.0+ (see LICENSE for details).
-
 #[derive(Debug, Clone, Default)]
 pub struct XmlAttribute {
     name: String,
     value: String,
-    _ns_link: Option<String>,
     ns_alias: Option<String>,
 }
 
@@ -58,7 +54,6 @@ impl XmlAttribute {
         XmlAttribute {
             name,
             value,
-            _ns_link: None,
             ns_alias,
         }
     }

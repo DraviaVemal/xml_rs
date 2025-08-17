@@ -6,6 +6,7 @@ use std::{fs, io::Cursor};
 pub struct XmlDeserializer {}
 
 impl XmlDeserializer {
+    
     pub fn file_to_xml_doc_tree(file_path: &str) -> AnyResult<XmlDocument, AnyError> {
         let xml_str = fs::read(file_path).context("Failed to read XML file")?;
         Self::vec_to_xml_doc_tree(xml_str)
@@ -24,7 +25,9 @@ impl XmlDeserializer {
         )?;
         Ok(xml_document)
     }
+}
 
+impl XmlDeserializer {
     fn xml_element_parser(
         reader: &mut NsReader<Cursor<Vec<u8>>>,
         xml_document: &mut XmlDocument,
@@ -52,7 +55,7 @@ impl XmlDeserializer {
                     let attributes = Self::get_attributes_string(element)?;
                     if root_loaded {
                         xml_document
-                            .add_child_element_mut(&active_xml_element_id, &tag, Some(attributes))
+                            .append_child_element_mut(active_xml_element_id, &tag, Some(attributes))
                             .context("Insert XML Child Failed.")?;
                     } else {
                         xml_document
@@ -66,7 +69,7 @@ impl XmlDeserializer {
                     let attributes = Self::get_attributes_string(element)?;
                     if root_loaded {
                         active_xml_element_id = xml_document
-                            .add_child_element_mut(&active_xml_element_id, &tag, Some(attributes))
+                            .append_child_element_mut(active_xml_element_id, &tag, Some(attributes))
                             .context("Insert XML Child Failed.")?;
                     } else {
                         active_xml_element_id = xml_document
@@ -81,7 +84,7 @@ impl XmlDeserializer {
                         .context("XML Text parsing error")?
                         .to_string();
                     xml_document
-                        .get_element_mut(&active_xml_element_id)
+                        .get_element_mut(active_xml_element_id)
                         .context("Getting Target Element Failed")?
                         .add_content_mut(XmlElementContentType::Text(text));
                 }
@@ -91,14 +94,14 @@ impl XmlDeserializer {
                         .context("XML Text parsing error")?
                         .to_string();
                     xml_document
-                        .get_element_mut(&active_xml_element_id)
+                        .get_element_mut(active_xml_element_id)
                         .context("Getting Target Element Failed")?
                         .add_content_mut(XmlElementContentType::Comment(comment));
                 }
                 Ok(Event::End(element)) => {
                     let tag = String::from_utf8_lossy(element.name().into_inner()).to_string();
                     let element = xml_document
-                        .get_element_mut(&active_xml_element_id)
+                        .get_element_mut(active_xml_element_id)
                         .context("Invalid XML Tree Parsing Failed.")?;
                     if element.get_tag_ns() == tag {
                         if let Some(parent_id) = element.get_parent_id() {
