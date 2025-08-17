@@ -6,8 +6,7 @@
  */
 
 use crate::{utils::validation, NodeId, XmlAttribute, XmlNamespace};
-use anyhow::Error as AnyError;
-use quick_xml::escape::escape;
+use anyhow::{Context, Error as AnyError};
 use std::{cell::RefCell, rc::Rc};
 
 /// Represents the different types of content that can be contained within an XML element.
@@ -117,7 +116,7 @@ impl XmlElement {
     /// # Arguments
     /// * `text` - The text content to add.
     pub fn add_text_mut(&mut self, text: String) {
-        self.add_content_mut(XmlElementContentType::Text(escape(text).to_string()));
+        self.add_content_mut(XmlElementContentType::Text(text.to_string()));
     }
 
     /// Adds a comment node to this element's contents.
@@ -125,7 +124,7 @@ impl XmlElement {
     /// # Arguments
     /// * `comment` - The comment text to add.
     pub fn add_comments_mut(&mut self, comment: String) {
-        self.add_content_mut(XmlElementContentType::Comment(escape(comment).to_string()));
+        self.add_content_mut(XmlElementContentType::Comment(comment.to_string()));
     }
 }
 
@@ -183,6 +182,24 @@ impl XmlElement {
     /// * `&Option<Vec<XmlElementContentType>>` - The contents, if any.
     pub fn get_contents(&self) -> &Option<Vec<XmlElementContentType>> {
         &self.contents
+    }
+
+    /// Gets the count of child elements.
+    ///
+    /// # Returns
+    /// * `Result<u32, AnyError>` - The count of child elements, or an error if the contents are not accessible.
+    pub fn get_child_element_count(&self) -> Result<u32, AnyError> {
+        let count = self
+            .contents
+            .as_ref()
+            .context("Failed to open contents")?
+            .iter()
+            .filter(|content| match content {
+                XmlElementContentType::Element(_) => true,
+                _ => false,
+            })
+            .count() as u32;
+        Ok(count)
     }
 
     /// Finds the first child element with the given tag name.

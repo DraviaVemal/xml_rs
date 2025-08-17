@@ -3,7 +3,6 @@ mod xml_test {
     use draviavemal_xml_rs::{
         XmlAttribute, XmlDeserializer, XmlDocument, XmlElementContentType, XmlSerializer,
     };
-    use quick_xml::escape::unescape;
 
     /// Test data for common XML test cases
     fn get_test_xml() -> &'static str {
@@ -361,13 +360,11 @@ mod xml_test {
             .append_child_element_mut(root_id, "special", None)
             .expect("Failed to append child element");
 
+        // Add text with special characters
         document
             .get_element_mut(special_id)
             .expect("Failed to get special element")
-            .add_text_mut("<>&\"'".to_string());
-        // Add text with special characters
-        // We can't directly modify elements with get_element_mut as it's private
-        // Instead we need to use the public document API
+            .add_text_mut("a<>&\"'".to_string());
         document
             .append_child_element_mut(root_id, "special", None)
             .expect("Failed to append special element");
@@ -396,7 +393,7 @@ mod xml_test {
         if let Some(contents) = special.get_contents() {
             let has_special_text = contents.iter().any(|content| {
                 if let XmlElementContentType::Text(text) = content {
-                    unescape(text).expect("Reverse string").contains("<>&\"'")
+                    text.contains("a<>&\"'")
                 } else {
                     false
                 }
