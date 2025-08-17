@@ -34,10 +34,10 @@ impl XmlSerializer {
     ) -> AnyResult<(), AnyError> {
         // Convert the document to a byte vector
         let xml_bytes = Self::xml_tree_to_vec(xml_document)?;
-        
+
         // Write the bytes to the file
         fs::write(file_path, xml_bytes).context("Failed to write XML file")?;
-        
+
         Ok(())
     }
 
@@ -50,7 +50,7 @@ impl XmlSerializer {
     /// * `AnyResult<Vec<u8>, AnyError>` - The serialized XML as bytes, or an error.
     pub fn xml_tree_to_vec(xml_document: &mut XmlDocument) -> AnyResult<Vec<u8>, AnyError> {
         let mut xml_content = String::new();
-        
+
         // Add XML declaration with conditional behavior based on build mode
         #[cfg(debug_assertions)]
         {
@@ -64,7 +64,7 @@ impl XmlSerializer {
                 .as_str(),
             );
         }
-        
+
         #[cfg(not(debug_assertions))]
         {
             // In release mode, add XML declaration and metadata comment
@@ -80,7 +80,7 @@ impl XmlSerializer {
                 )
                 .as_str(),);
         }
-        
+
         // Build the XML tree, measuring performance in debug mode
         xml_content.push_str(
             log_elapsed!(
@@ -91,7 +91,7 @@ impl XmlSerializer {
             )?
             .as_str(),
         );
-        
+
         // Convert the string to UTF-8 bytes
         Ok(xml_content.as_bytes().to_vec())
     }
@@ -111,10 +111,10 @@ impl XmlSerializer {
     /// * `String` - The formatted tag string with attributes.
     fn build_element(element: &XmlElement) -> String {
         let mut element_part = String::new();
-        
+
         // Add the tag name with namespace if present
         element_part.push_str(&element.get_tag_ns());
-        
+
         // Add attributes if present
         if let Some(attributes) = element.get_attributes() {
             for attribute in attributes {
@@ -126,7 +126,7 @@ impl XmlSerializer {
                 ));
             }
         }
-        
+
         element_part
     }
 
@@ -143,18 +143,29 @@ impl XmlSerializer {
         element_id: NodeId,
     ) -> Result<String, AnyError> {
         let mut content_part = String::new();
-        
+
         // Get a copy of the element to work with
         let element = xml_document
             .get_element_mut(element_id)
             .context("Failed to get element")?
             .clone_limited();
-        
+
+        // Add Namespace attributes
+        if element.has_namespace() {
+            let namespace_context = element.get_namespace_context();
+            let namespace = namespace_context
+                .try_borrow()
+                .context("Failed to borrow namespace context")?;
+            for (prefix, uri) in namespace.get_namespace_alias_url().iter() {
+                content_part.push_str(&format!(" xmlns:{}=\"{}\"", prefix, uri));
+            }
+        }
+
         // Check if the element has contents
         if let Some(contents) = element.get_contents() {
             // Start tag with attributes
             content_part.push_str(&format!("<{}>", Self::build_element(&element)));
-            
+
             // Process each content item
             for content in contents {
                 match content {
@@ -163,18 +174,18 @@ impl XmlSerializer {
                         let element_content = Self::build_element_content(xml_document, *id)
                             .context("Failed to build element content")?;
                         content_part.push_str(&element_content);
-                    },
+                    }
                     // Escape and add text content
                     XmlElementContentType::Text(text) => {
                         content_part.push_str(&escape(text.to_string()));
-                    },
+                    }
                     // Format comments
                     XmlElementContentType::Comment(comment) => {
                         content_part.push_str(&format!("<!--{}-->", comment));
-                    },
+                    }
                 }
             }
-            
+
             // Only add closing tag if there's content
             if !contents.is_empty() {
                 content_part.push_str(&format!("</{}>", element.get_tag_ns()));
@@ -183,7 +194,7 @@ impl XmlSerializer {
             // Self-closing tag for elements without content
             content_part.push_str(&format!("<{}/>", Self::build_element(&element)));
         }
-        
+
         Ok(content_part)
     }
 
@@ -196,16 +207,16 @@ impl XmlSerializer {
     /// * `AnyResult<String, AnyError>` - The complete XML string or an error.
     fn build_xml_tree(xml_document: &mut XmlDocument) -> AnyResult<String, AnyError> {
         let mut xml_part = String::new();
-        
+
         // Get the root element ID
         let current_id = xml_document.get_root_id();
-        
+
         // Build the XML tree starting from the root
         let root_content = Self::build_element_content(xml_document, current_id)
             .context("Failed to build root content tree")?;
-        
+
         xml_part.push_str(&root_content);
-        
+
         Ok(xml_part)
     }
 }

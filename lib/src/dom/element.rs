@@ -50,7 +50,7 @@ impl XmlElement {
     // --------------------------
     // pub mut self methods
     // --------------------------
-    
+
     /// Adds a child element by tag and node ID.
     ///
     /// # Arguments
@@ -235,7 +235,7 @@ impl XmlElement {
                 _ => None,
             })
             .collect();
-        
+
         // Return None if no matching children found
         if childs.is_empty() {
             None
@@ -347,6 +347,19 @@ impl XmlElement {
             false
         }
     }
+
+    /// Checks if this element has a namespace.
+    ///
+    /// # Returns
+    /// - `bool` - True if the element has a namespace, false otherwise.
+    pub(crate) fn has_namespace(&self) -> bool {
+        self.ns_context_override
+    }
+
+    /// Returns a reference to the namespace context for this element.
+    pub(crate) fn get_namespace_context(&self) -> Rc<RefCell<XmlNamespace>> {
+        self.namespace_context.clone()
+    }
 }
 
 impl XmlElement {
@@ -369,7 +382,7 @@ impl XmlElement {
         mut namespace_context: Rc<RefCell<XmlNamespace>>,
     ) -> Result<XmlElement, AnyError> {
         let mut ns_context_override = false;
-        
+
         // Validate that the tag name follows XML naming rules
         if validation::is_valid_xml_name(&tag) {
             // Validate that all attribute names follow XML naming rules
@@ -380,11 +393,11 @@ impl XmlElement {
                 {
                     return Err(AnyError::msg("Not all attributes satisfy naming standards"));
                 }
-                
+
                 // Process namespace declarations (xmlns attributes)
                 let mut attributes = attributes.clone();
                 let mut namespaces = Vec::new();
-                
+
                 // Extract namespace declarations from attributes
                 attributes.retain(|attribute| {
                     if attribute.get_ns_name().starts_with("xmlns") {
@@ -394,19 +407,19 @@ impl XmlElement {
                         true // Keep as regular attribute
                     }
                 });
-                
+
                 // If namespace declarations found, create a new namespace context
                 if !namespaces.is_empty() {
                     ns_context_override = true;
                     namespace_context = Rc::new(RefCell::new(XmlNamespace::new()));
-                    
+
                     // Add each namespace declaration to the context
                     for namespace in namespaces {
                         namespace_context.borrow_mut().add_namespace_mut(namespace);
                     }
                 }
             }
-            
+
             // Parse the tag for namespace prefix
             let (ns_alias, tag) = if let Some(pos) = tag.find(':') {
                 let (ns, tag) = tag.split_at(pos);
@@ -414,7 +427,7 @@ impl XmlElement {
             } else {
                 (None, tag)
             };
-            
+
             // Create and return the new element
             Ok(XmlElement {
                 id: 0, // Initial ID, will be set by document
