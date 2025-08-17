@@ -60,7 +60,9 @@ impl XmlSerializer {
         // Return the XML as a UTF-8 byte vector.
         Ok(xml_content.as_bytes().to_vec())
     }
+}
 
+impl XmlSerializer {
     fn build_element(element: &XmlElement) -> String {
         let mut element_part = String::new();
         element_part.push_str(&element.get_tag_ns());
@@ -78,19 +80,19 @@ impl XmlSerializer {
 
     fn build_element_content(
         xml_document: &mut XmlDocument,
-        element_id: &NodeId,
+        element_id: NodeId,
     ) -> Result<String, AnyError> {
         let mut content_part = String::new();
         let element = xml_document
             .get_element_mut(element_id)
             .context("Failed to get element")?
-            .clone();
+            .clone_limited();
         if let Some(contents) = element.get_contents() {
             content_part.push_str(&format!("<{}>", Self::build_element(&element)));
             for content in contents {
                 match content {
                     XmlElementContentType::Element((id, _)) => {
-                        let element_content = Self::build_element_content(xml_document, &id)
+                        let element_content = Self::build_element_content(xml_document, *id)
                             .context("Failed to build element content")?;
                         content_part.push_str(&element_content);
                     }
@@ -113,8 +115,8 @@ impl XmlSerializer {
 
     fn build_xml_tree(xml_document: &mut XmlDocument) -> AnyResult<String, AnyError> {
         let mut xml_part = String::new();
-        let current_id = *xml_document.get_root_id();
-        let test = Self::build_element_content(xml_document, &current_id)
+        let current_id = xml_document.get_root_id();
+        let test = Self::build_element_content(xml_document, current_id)
             .context("Failed to build root content tree")?;
         xml_part.push_str(&test);
         Ok(xml_part)
