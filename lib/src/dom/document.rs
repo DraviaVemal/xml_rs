@@ -117,7 +117,8 @@ impl XmlDocument {
         // Add the child to the parent's contents
         self.get_element_mut(parent_id)
             .context("Parent element not found")?
-            .add_child_mut(node_id, tag.to_string());
+            .add_child_mut(node_id, tag.to_string())
+            .context("Failed to add child element to parent")?;
 
         Ok(node_id)
     }

@@ -9,7 +9,7 @@ license = "AGPL-3.0-only"
 repository = "https://github.com/DraviaVemal/xml_rs"
 documentation = "https://github.com/DraviaVemal/xml_rs"
 homepage = "https://github.com/DraviaVemal/xml_rs"
-description = "A lightweight XML library"
+description = "A high-performance, low-memory XML DOM parser for Rust — with namespace-aware parsing, order-preserving attributes, and round-trip safe serialization."
 authors = ["Dravia Vemal <contact@draviavemal.com>"]
 
 [dependencies]
