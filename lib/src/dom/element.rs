@@ -51,34 +51,21 @@ impl XmlElement {
     // pub mut self methods
     // --------------------------
 
-    /// Adds a child element by tag and node ID.
-    ///
-    /// # Arguments
-    /// * `child_id` - The node ID of the child element to add.
-    /// * `tag` - The tag name of the child element.
-    pub fn add_child_mut(&mut self, child_id: NodeId, tag: String) {
-        // Ensure contents vector exists before adding a new child
-        if self.contents.is_none() {
-            self.contents = Some(Vec::new());
-        }
-        // Add the child element to the contents collection
-        self.contents
-            .as_mut()
-            .unwrap()
-            .push(XmlElementContentType::Element((child_id, tag)));
-    }
-
     /// Adds an attribute to this element.
     ///
     /// # Arguments
     /// * `attribute` - The XML attribute to add to this element.
-    pub fn add_attribute_mut(&mut self, attribute: XmlAttribute) {
+    pub fn add_attribute_mut(&mut self, attribute: XmlAttribute) -> Result<(), AnyError> {
         // Ensure attributes vector exists before adding a new attribute
         if self.attributes.is_none() {
             self.attributes = Some(Vec::new());
         }
         // Add the attribute to the attributes collection
-        self.attributes.as_mut().unwrap().push(attribute);
+        self.attributes
+            .as_mut()
+            .context("Failed to insert value")?
+            .push(attribute);
+        Ok(())
     }
 
     /// Removes an attribute by its local name.
@@ -115,16 +102,18 @@ impl XmlElement {
     ///
     /// # Arguments
     /// * `text` - The text content to add.
-    pub fn add_text_mut(&mut self, text: String) {
-        self.add_content_mut(XmlElementContentType::Text(text.to_string()));
+    pub fn add_text_mut(&mut self, text: String) -> Result<&mut XmlElement, AnyError> {
+        self.add_content_mut(XmlElementContentType::Text(text.to_string()))?;
+        Ok(self)
     }
 
     /// Adds a comment node to this element's contents.
     ///
     /// # Arguments
     /// * `comment` - The comment text to add.
-    pub fn add_comments_mut(&mut self, comment: String) {
-        self.add_content_mut(XmlElementContentType::Comment(comment.to_string()));
+    pub fn add_comments_mut(&mut self, comment: String) -> Result<&mut XmlElement, AnyError> {
+        self.add_content_mut(XmlElementContentType::Comment(comment.to_string()))?;
+        Ok(self)
     }
 }
 
@@ -168,12 +157,34 @@ impl XmlElement {
         }
     }
 
-    /// Gets a reference to the element's attributes.
+    /// Retrieves an attribute by its local name.
+    ///
+    /// # Arguments
+    /// * `name` - The local name of the attribute to retrieve.
     ///
     /// # Returns
-    /// * `&Option<Vec<XmlAttribute>>` - The attributes, if any.
-    pub fn get_attributes(&self) -> &Option<Vec<XmlAttribute>> {
-        &self.attributes
+    /// * `Option<&XmlAttribute>` - A reference to the attribute if found, or None.
+    pub fn get_attribute(&self, name: String) -> Option<&XmlAttribute> {
+        if let Some(attributes) = self.attributes.as_ref() {
+            attributes.iter().find(|item| item.get_name() == name)
+        } else {
+            None
+        }
+    }
+
+    /// Retrieves an attribute by its namespaced name.
+    ///
+    /// # Arguments
+    /// * `name_ns` - The namespaced name of the attribute to retrieve (e.g., "ns:attr").
+    ///
+    /// # Returns
+    /// * `Option<&XmlAttribute>` - A reference to the attribute if found, or None.
+    pub fn get_attribute_ns(&self, name_ns: String) -> Option<&XmlAttribute> {
+        if let Some(attributes) = self.attributes.as_ref() {
+            attributes.iter().find(|item| item.get_ns_name() == name_ns)
+        } else {
+            None
+        }
     }
 
     /// Gets a reference to the element's contents (children, text, comments).
@@ -279,6 +290,24 @@ impl XmlElement {
     // pub(crate) mut self methods
     // --------------------------
 
+    /// Adds a child element by tag and node ID.
+    ///
+    /// # Arguments
+    /// * `child_id` - The node ID of the child element to add.
+    /// * `tag` - The tag name of the child element.
+    pub(crate) fn add_child_mut(&mut self, child_id: NodeId, tag: String) -> Result<(), AnyError> {
+        // Ensure contents vector exists before adding a new child
+        if self.contents.is_none() {
+            self.contents = Some(Vec::new());
+        }
+        // Add the child element to the contents collection
+        self.contents
+            .as_mut()
+            .context("Failed to insert child element")?
+            .push(XmlElementContentType::Element((child_id, tag)));
+        Ok(())
+    }
+
     /// Sets the node ID of this element.
     ///
     /// # Arguments
@@ -307,19 +336,33 @@ impl XmlElement {
     ///
     /// # Returns
     /// * `&mut Self` - For method chaining.
-    pub(crate) fn add_content_mut(&mut self, content_type: XmlElementContentType) -> &mut Self {
+    pub(crate) fn add_content_mut(
+        &mut self,
+        content_type: XmlElementContentType,
+    ) -> Result<&mut Self, AnyError> {
         // Ensure contents vector exists before adding content
         if self.contents.is_none() {
             self.contents = Some(Vec::new());
         }
         // Add the content to the contents collection
-        self.contents.as_mut().unwrap().push(content_type);
-        self
+        self.contents
+            .as_mut()
+            .context("Failed to insert content item")?
+            .push(content_type);
+        Ok(self)
     }
 
     // --------------------------
     // pub(crate) self methods
     // --------------------------
+
+    /// Gets a reference to the element's attributes.
+    ///
+    /// # Returns
+    /// * `&Option<Vec<XmlAttribute>>` - The attributes, if any.
+    pub(crate) fn get_attributes(&self) -> &Option<Vec<XmlAttribute>> {
+        &self.attributes
+    }
 
     /// Gets the namespace context for this element.
     ///

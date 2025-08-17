@@ -2,7 +2,7 @@
 
 A high-performance, low-memory XML DOM parser for Rust — with **namespace-aware** parsing, **order-preserving attributes**, and **round-trip safe** serialization.
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://crates.io/crates/draviavemal-xml_rs)
+[![Latest Version](https://img.shields.io/crates/v/draviavemal-xml_rs)](https://crates.io/crates/draviavemal-xml_rs)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-green.svg)](LICENSE)
 
 ### 📜 License

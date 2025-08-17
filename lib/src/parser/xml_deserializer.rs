@@ -159,7 +159,8 @@ impl XmlDeserializer {
                     xml_document
                         .get_element_mut(active_xml_element_id)
                         .context("Getting Target Element for text Failed")?
-                        .add_content_mut(XmlElementContentType::Text(text));
+                        .add_content_mut(XmlElementContentType::Text(text))
+                        .context("Failed to add text content")?;
                 }
 
                 // Process comments
@@ -172,7 +173,8 @@ impl XmlDeserializer {
                     xml_document
                         .get_element_mut(active_xml_element_id)
                         .context("Getting Target Element for comments Failed")?
-                        .add_content_mut(XmlElementContentType::Comment(comment));
+                        .add_content_mut(XmlElementContentType::Comment(comment))
+                        .context("Failed to add comments")?;
                 }
 
                 // Process end of element
