@@ -1,3 +1,10 @@
+/*
+ * This file is part of the xml_rs project.
+ * License: AGPL-3.0 (see ./LICENSE for details).
+ * - Free for non-commercial/open source use under AGPL-3.0.
+ * - Commercial use requires a separate license.
+ */
+
 pub(crate) fn is_valid_xml_name(name: &str) -> bool {
     fn is_name_start_char(c: char) -> bool {
         c.is_ascii_alphabetic() || c == '_' || c.is_alphabetic()
