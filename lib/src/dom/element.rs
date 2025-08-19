@@ -5,11 +5,13 @@
  * - Commercial use requires a separate license.
  */
 
-use crate::{utils::validation, NodeId, XmlAttribute, XmlNamespace};
+use crate::{utils::validation::is_valid_xml_name, NodeId, XmlAttribute, XmlNamespace};
 use anyhow::{Context, Error as AnyError};
 use std::{cell::RefCell, rc::Rc};
 
+/// Element tag name without namespace suppor
 pub type Tag = String;
+/// Element tag name with namespace suppor
 pub type NsTag = String;
 
 /// Represents the different types of content that can be contained within an XML element.
@@ -129,10 +131,6 @@ impl XmlElement {
     /// * `Result<&mut XmlElement, AnyError>` - A mutable reference to self for method chaining,
     ///   or an error if adding the comment failed.
     ///
-    /// # Example
-    /// ```
-    /// element.add_comments_mut("This section contains user information")?;
-    /// ```
     pub fn add_comments_mut(&mut self, comment: &str) -> Result<(), AnyError> {
         self.add_child_content_mut(XmlElementContentType::Comment(comment.to_owned()))?;
         Ok(())
@@ -750,12 +748,12 @@ impl XmlElement {
         let mut ns_context_override = false;
 
         // Validate that the tag name follows XML naming rules
-        if validation::is_valid_xml_name(&tag) {
+        if is_valid_xml_name(&tag) {
             // Validate that all attribute names follow XML naming rules
             let filtered_attributes = if let Some(mut attributes) = attributes {
                 if !attributes
                     .iter()
-                    .all(|attribute| validation::is_valid_xml_name(&attribute.get_ns_name()))
+                    .all(|attribute| is_valid_xml_name(&attribute.get_ns_name()))
                 {
                     return Err(AnyError::msg("Not all attributes satisfy naming standards"));
                 }

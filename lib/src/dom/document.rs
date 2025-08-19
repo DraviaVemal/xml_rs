@@ -120,11 +120,6 @@ impl XmlDocument {
     /// # Returns
     /// * `Result<NodeId, AnyError>` - The node ID of the created child element, or an error.
     ///
-    /// # Example
-    /// ```
-    /// // Insert a <price> element after the last <description> element
-    /// doc.inser_child_element_after_last_tag_mut(product_id, "price", "description", Some(attrs))?;
-    /// ```
     pub fn inser_child_element_after_last_tag_mut(
         &mut self,
         parent_id: NodeId,

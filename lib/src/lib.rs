@@ -5,9 +5,9 @@
  * - Commercial use requires a separate license.
  */
 
-pub mod dom;
+mod dom;
 pub(crate) mod macros;
-pub mod parser;
+mod parser;
 pub(crate) mod utils;
 
 pub use dom::*;
