@@ -111,9 +111,9 @@ impl XmlElement {
     ///
     /// # Arguments
     /// * `text` - The text content to add.
-    pub fn add_text_mut(&mut self, text: &str) -> Result<&mut XmlElement, AnyError> {
+    pub fn add_text_mut(&mut self, text: &str) -> Result<(), AnyError> {
         self.add_child_content_mut(XmlElementContentType::Text(text.to_owned()))?;
-        Ok(self)
+        Ok(())
     }
 
     /// Adds a comment node to this element's contents.
@@ -133,9 +133,9 @@ impl XmlElement {
     /// ```
     /// element.add_comments_mut("This section contains user information")?;
     /// ```
-    pub fn add_comments_mut(&mut self, comment: &str) -> Result<&mut XmlElement, AnyError> {
+    pub fn add_comments_mut(&mut self, comment: &str) -> Result<(), AnyError> {
         self.add_child_content_mut(XmlElementContentType::Comment(comment.to_owned()))?;
-        Ok(self)
+        Ok(())
     }
 }
 
@@ -389,19 +389,20 @@ impl XmlElement {
             .context("Failed to insert child element")?;
         let last_id = child_collection
             .iter()
-            .filter_map(|item| match item {
-                XmlElementContentType::Element((id, tag, _)) => {
+            .enumerate()
+            .filter_map(|(index, content_type)| match content_type {
+                XmlElementContentType::Element((_, tag, _)) => {
                     if tag == after_tag {
-                        Some(*id)
+                        Some(index)
                     } else {
                         None
                     }
                 }
                 _ => None,
             })
-            .collect::<Vec<u32>>();
+            .collect::<Vec<usize>>();
         if let Some(last_id) = last_id.last() {
-            if (last_id + 1) < child_collection.len() as u32 {
+            if (last_id + 1) >= child_collection.len() {
                 child_collection.push(XmlElementContentType::Element((
                     child_id,
                     new_tag.to_owned(),
@@ -409,7 +410,7 @@ impl XmlElement {
                 )));
             } else {
                 child_collection.insert(
-                    *last_id as usize,
+                    *last_id + 1,
                     XmlElementContentType::Element((
                         child_id,
                         new_tag.to_owned(),
@@ -446,17 +447,18 @@ impl XmlElement {
             .context("Failed to insert child element")?;
         let first_id = child_collection
             .iter()
-            .filter_map(|item| match item {
-                XmlElementContentType::Element((id, tag, _)) => {
+            .enumerate()
+            .filter_map(|(index, content_type)| match content_type {
+                XmlElementContentType::Element((_, tag, _)) => {
                     if tag == before_tag {
-                        Some(*id)
+                        Some(index)
                     } else {
                         None
                     }
                 }
                 _ => None,
             })
-            .collect::<Vec<u32>>();
+            .collect::<Vec<usize>>();
         if let Some(first_id) = first_id.first() {
             child_collection.insert(
                 *first_id as usize,
@@ -499,19 +501,20 @@ impl XmlElement {
             .context("Failed to insert child element")?;
         let last_id = child_collection
             .iter()
-            .filter_map(|item| match item {
-                XmlElementContentType::Element((id, _, tag_ns)) => {
+            .enumerate()
+            .filter_map(|(index, content_type)| match content_type {
+                XmlElementContentType::Element((_, _, tag_ns)) => {
                     if tag_ns == after_tag_ns {
-                        Some(*id)
+                        Some(index)
                     } else {
                         None
                     }
                 }
                 _ => None,
             })
-            .collect::<Vec<u32>>();
+            .collect::<Vec<usize>>();
         if let Some(last_id) = last_id.last() {
-            if (last_id + 1) < child_collection.len() as u32 {
+            if (last_id + 1) >= child_collection.len() {
                 child_collection.push(XmlElementContentType::Element((
                     child_id,
                     new_tag.to_owned(),
@@ -519,7 +522,7 @@ impl XmlElement {
                 )));
             } else {
                 child_collection.insert(
-                    *last_id as usize,
+                    *last_id + 1,
                     XmlElementContentType::Element((
                         child_id,
                         new_tag.to_owned(),
@@ -556,17 +559,18 @@ impl XmlElement {
             .context("Failed to insert child element")?;
         let first_id = child_collection
             .iter()
-            .filter_map(|item| match item {
-                XmlElementContentType::Element((id, _, tag_ns)) => {
+            .enumerate()
+            .filter_map(|(index, content_type)| match content_type {
+                XmlElementContentType::Element((_, _, tag_ns)) => {
                     if tag_ns == before_tag_ns {
-                        Some(*id)
+                        Some(index)
                     } else {
                         None
                     }
                 }
                 _ => None,
             })
-            .collect::<Vec<u32>>();
+            .collect::<Vec<usize>>();
         if let Some(first_id) = first_id.first() {
             child_collection.insert(
                 *first_id as usize,
@@ -621,7 +625,7 @@ impl XmlElement {
     pub(crate) fn add_child_content_mut(
         &mut self,
         content_type: XmlElementContentType,
-    ) -> Result<&mut Self, AnyError> {
+    ) -> Result<(), AnyError> {
         // Ensure contents vector exists before adding content
         if self.child_contents.is_none() {
             self.child_contents = Some(Vec::new());
@@ -631,7 +635,7 @@ impl XmlElement {
             .as_mut()
             .context("Failed to insert content item")?
             .push(content_type);
-        Ok(self)
+        Ok(())
     }
 
     // --------------------------
@@ -686,6 +690,25 @@ impl XmlElement {
             attributes
                 .iter()
                 .any(|a| a.get_name() == attr_name && a.get_value() == attr_value)
+        } else {
+            false
+        }
+    }
+
+    /// Checks if this element has an attribute with the given name and value.
+    ///
+    /// # Arguments
+    /// * `attr_name` - The name of the attribute to check.
+    /// * `attr_value` - The expected value of the attribute.
+    ///
+    /// # Returns
+    /// * `bool` - True if the element has an attribute with the given name and value.
+    pub(crate) fn has_attribute_ns(&self, attr_name_ns: &str, attr_value: &str) -> bool {
+        if let Some(attributes) = &self.attributes {
+            // Check if any attribute matches both name and value
+            attributes
+                .iter()
+                .any(|a| a.get_ns_name() == attr_name_ns && a.get_value() == attr_value)
         } else {
             false
         }
