@@ -328,7 +328,7 @@ impl XmlDocument {
             xml_element_collection: self
                 .xml_element_collection
                 .iter()
-                .map(|(node_id, element)| (node_id.clone(), element.clone_limited()))
+                .map(|(node_id, element)| (*node_id, element.clone_limited()))
                 .collect(),
         }
     }
@@ -683,7 +683,7 @@ impl XmlDocument {
         let mut child_element = XmlElement::new(new_tag, attributes, ns_context)
             .context("Failed to create child element")?;
         child_element.set_id_mut(node_id);
-        child_element.set_parent_id_mut(parent_id.clone());
+        child_element.set_parent_id_mut(parent_id);
         let tag_ns = child_element.get_tag_ns();
         self.add_element(node_id, child_element);
         Ok((node_id, tag_ns))

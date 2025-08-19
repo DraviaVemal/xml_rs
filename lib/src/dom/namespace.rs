@@ -53,8 +53,8 @@ impl XmlNamespace {
             .map(|v| v.to_string())
             .collect::<Vec<String>>()
             .get(1)
-            .unwrap_or(&"".to_string())
-            .clone();
+            .cloned()
+            .unwrap_or_default();
         let url = ns_attribute.get_value();
 
         // Add the mapping
