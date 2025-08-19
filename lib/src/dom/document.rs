@@ -502,7 +502,7 @@ impl XmlDocument {
                         .context("Failed to pull child element")?
                         .has_attribute(attr_name, attr_value)
                     {
-                        result.push(child_id.clone());
+                        result.push(*child_id);
                     }
                 }
             }
@@ -531,7 +531,51 @@ impl XmlDocument {
         attr_name_ns: &str,
         attr_value: &str,
     ) -> Result<Option<Vec<NodeId>>, AnyError> {
-        self.find_all_by_attribute(parent_id, attr_name_ns, attr_value)
+        let mut result = Vec::new();
+
+        // Check if the parent element has contents
+        if let Some(contents) = self
+            .get_element(parent_id)
+            .context("Failed to pull parent element")?
+            .get_child_contents()
+        {
+            // Iterate through each content item
+            for content in contents {
+                if let XmlElementContentType::Element((child_id, _, _)) = content {
+                    // Check if the child element has the specified attribute with the specified value
+                    if self
+                        .get_element(*child_id)
+                        .context("Failed to pull child element")?
+                        .has_attribute_ns(attr_name_ns, attr_value)
+                    {
+                        result.push(*child_id);
+                    }
+                }
+            }
+        }
+
+        // Return None if no matching children found
+        if result.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(result))
+        }
+    }
+
+    /// Sets the XML version string.
+    ///
+    /// # Arguments
+    /// * `version` - The version string to set (e.g., "1.0").
+    pub fn set_version_mut(&mut self, version: String) {
+        self.version = version;
+    }
+
+    /// Sets the XML document encoding.
+    ///
+    /// # Arguments
+    /// * `encoding` - The encoding string to set (e.g., "UTF-8").
+    pub fn set_encoding_mut(&mut self, encoding: String) {
+        self.encoding = encoding
     }
 
     /// Removes an element and all its descendants from the document.
@@ -599,22 +643,6 @@ impl XmlDocument {
     /// * `element` - The element to add.
     pub(crate) fn add_element(&mut self, id: NodeId, element: XmlElement) {
         self.xml_element_collection.insert(id, element);
-    }
-
-    /// Sets the XML version string.
-    ///
-    /// # Arguments
-    /// * `version` - The version string to set (e.g., "1.0").
-    pub(crate) fn set_version_mut(&mut self, version: String) {
-        self.version = version;
-    }
-
-    /// Sets the XML document encoding.
-    ///
-    /// # Arguments
-    /// * `encoding` - The encoding string to set (e.g., "UTF-8").
-    pub(crate) fn set_encoding_mut(&mut self, encoding: String) {
-        self.encoding = encoding
     }
 
     /// Recursively removes all descendant elements present in the contents of the given element.
