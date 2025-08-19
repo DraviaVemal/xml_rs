@@ -105,6 +105,26 @@ impl XmlDocument {
         Ok(node_id)
     }
 
+    /// Inserts a child element after the last occurrence of a specific tag.
+    ///
+    /// This method finds the last element with the specified tag name among
+    /// the parent's children and inserts the new element immediately after it.
+    /// If no matching element is found, the new element is appended at the end.
+    ///
+    /// # Arguments
+    /// * `parent_id` - The node ID of the parent element.
+    /// * `tag` - The tag name for the new child element.
+    /// * `last_tag` - The tag name to position after (reference point).
+    /// * `attributes` - Optional attributes for the new child element.
+    ///
+    /// # Returns
+    /// * `Result<NodeId, AnyError>` - The node ID of the created child element, or an error.
+    ///
+    /// # Example
+    /// ```
+    /// // Insert a <price> element after the last <description> element
+    /// doc.inser_child_element_after_last_tag_mut(product_id, "price", "description", Some(attrs))?;
+    /// ```
     pub fn inser_child_element_after_last_tag_mut(
         &mut self,
         parent_id: NodeId,
@@ -124,6 +144,20 @@ impl XmlDocument {
         Ok(node_id)
     }
 
+    /// Inserts a child element before the first occurrence of a specific tag.
+    ///
+    /// This method finds the first element with the specified tag name among
+    /// the parent's children and inserts the new element immediately before it.
+    /// If no matching element is found, the new element is inserted at the beginning.
+    ///
+    /// # Arguments
+    /// * `parent_id` - The node ID of the parent element.
+    /// * `tag` - The tag name for the new child element.
+    /// * `first_tag` - The tag name to position before (reference point).
+    /// * `attributes` - Optional attributes for the new child element.
+    ///
+    /// # Returns
+    /// * `Result<NodeId, AnyError>` - The node ID of the created child element, or an error.
     pub fn inser_child_element_before_first_tag_mut(
         &mut self,
         parent_id: NodeId,
@@ -143,6 +177,19 @@ impl XmlDocument {
         Ok(node_id)
     }
 
+    /// Inserts a child element after the last occurrence of a specific namespaced tag.
+    ///
+    /// Similar to `inser_child_element_after_last_tag_mut` but matches using the full
+    /// namespaced tag name (e.g., "ns:tag") rather than just the local name.
+    ///
+    /// # Arguments
+    /// * `parent_id` - The node ID of the parent element.
+    /// * `tag` - The tag name for the new child element.
+    /// * `last_tag_ns` - The namespaced tag to position after (reference point).
+    /// * `attributes` - Optional attributes for the new child element.
+    ///
+    /// # Returns
+    /// * `Result<NodeId, AnyError>` - The node ID of the created child element, or an error.
     pub fn inser_child_element_after_last_tag_ns_mut(
         &mut self,
         parent_id: NodeId,
@@ -162,6 +209,19 @@ impl XmlDocument {
         Ok(node_id)
     }
 
+    /// Inserts a child element before the first occurrence of a specific namespaced tag.
+    ///
+    /// Similar to `inser_child_element_before_first_tag_mut` but matches using the full
+    /// namespaced tag name (e.g., "ns:tag") rather than just the local name.
+    ///
+    /// # Arguments
+    /// * `parent_id` - The node ID of the parent element.
+    /// * `tag` - The tag name for the new child element.
+    /// * `first_tag_ns` - The namespaced tag to position before (reference point).
+    /// * `attributes` - Optional attributes for the new child element.
+    ///
+    /// # Returns
+    /// * `Result<NodeId, AnyError>` - The node ID of the created child element, or an error.
     pub fn inser_child_element_before_first_tag_ns_mut(
         &mut self,
         parent_id: NodeId,
@@ -342,7 +402,7 @@ impl XmlDocument {
     /// * `tag_ns` - The namespaced tag to search for (e.g., "ns:tag").
     ///
     /// # Returns
-    /// * `Result<Option<Vec<NodeId>>, AnyError>` - A vector of matching child IDs, or None if none found.
+    /// * `Result<Option<Vec<NodeId>, AnyError>` - A vector of matching child IDs, or None if none found.
     pub fn find_all_child_ns(
         &self,
         parent_id: NodeId,

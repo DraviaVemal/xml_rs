@@ -39,13 +39,16 @@ fn main() {
         // Set as environment variable for Rust
         println!("cargo:rustc-env=GIT_VERSION={}", version);
 
-        // Overwrite version in Cargo.toml (Optional)
+        // Overwrite version in Cargo.toml based on Git tag
+        // This ensures the package version always matches the latest Git tag
+        // when building in a CI/CD environment (DEVOPS_BUILD=1)
         let cargo_toml_path = "Cargo.toml";
         let cargo_toml = fs::read_to_string(cargo_toml_path).expect("Failed to read Cargo.toml");
         let mut updated_cargo_toml = cargo_toml
             .lines()
             .map(|line| {
                 if line.starts_with("version =") {
+                    // Replace the version line with the one from Git tag
                     format!("version = \"{}\"", version)
                 } else {
                     line.to_string()
@@ -53,7 +56,7 @@ fn main() {
             })
             .collect::<Vec<_>>()
             .join("\n");
-        updated_cargo_toml.push('\n');
+        updated_cargo_toml.push('\n'); // Ensure file ends with newline
         fs::write(cargo_toml_path, updated_cargo_toml).expect("Failed to update Cargo.toml");
 
         println!("Updated Cargo.toml version to {}", version);

@@ -118,8 +118,21 @@ impl XmlElement {
 
     /// Adds a comment node to this element's contents.
     ///
+    /// This method allows you to insert XML comments (`<!-- comment -->`) into the element.
+    /// Comments are preserved during serialization and can be used for documentation
+    /// or to temporarily disable parts of the XML.
+    ///
     /// # Arguments
-    /// * `comment` - The comment text to add.
+    /// * `comment` - The comment text to add (without the `<!--` and `-->` delimiters).
+    ///
+    /// # Returns
+    /// * `Result<&mut XmlElement, AnyError>` - A mutable reference to self for method chaining,
+    ///   or an error if adding the comment failed.
+    ///
+    /// # Example
+    /// ```
+    /// element.add_comments_mut("This section contains user information")?;
+    /// ```
     pub fn add_comments_mut(&mut self, comment: &str) -> Result<&mut XmlElement, AnyError> {
         self.add_child_content_mut(XmlElementContentType::Comment(comment.to_owned()))?;
         Ok(self)

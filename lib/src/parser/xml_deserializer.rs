@@ -166,9 +166,10 @@ impl XmlDeserializer {
                 // Process comments
                 Ok(Event::Comment(byte_comment)) => {
                     // Unescape and add comment to current active element
+                    // Comments are preserved in the DOM and will be included during serialization
                     let comment = byte_comment
                         .unescape()
-                        .context("XML Text parsing error")?
+                        .context("XML Comment parsing error")?
                         .to_string();
                     xml_document
                         .get_element_mut(active_xml_element_id)
