@@ -8,7 +8,9 @@
 use crate::XmlAttribute;
 use std::collections::HashMap;
 
+/// Namespace alias key
 pub type NsAlias = String;
+/// Namespace url
 pub type NsUrl = String;
 
 /// Manages XML namespace mappings between aliases (prefixes) and URLs.

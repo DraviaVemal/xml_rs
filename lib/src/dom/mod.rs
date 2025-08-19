@@ -5,10 +5,10 @@
  * - Commercial use requires a separate license.
  */
 
-pub mod attribute;
-pub mod document;
-pub mod element;
-pub mod namespace;
+mod attribute;
+mod document;
+mod element;
+mod namespace;
 
 pub use attribute::*;
 pub use document::*;

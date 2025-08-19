@@ -5,8 +5,8 @@
  * - Commercial use requires a separate license.
  */
 
-pub mod xml_deserializer;
-pub mod xml_serializer;
+mod xml_deserializer;
+mod xml_serializer;
 
 pub use xml_deserializer::*;
 pub use xml_serializer::*;

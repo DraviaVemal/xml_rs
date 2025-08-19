@@ -5,4 +5,4 @@
  * - Commercial use requires a separate license.
  */
 
-pub mod validation;
+pub(crate) mod validation;
