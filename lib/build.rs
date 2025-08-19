@@ -34,7 +34,7 @@ fn main() {
         let version = String::from_utf8(output.stdout)
             .unwrap()
             .trim()
-            .replace("v", "");
+            .replace('v', "");
 
         // Set as environment variable for Rust
         println!("cargo:rustc-env=GIT_VERSION={}", version);
