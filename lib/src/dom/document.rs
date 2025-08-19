@@ -5,7 +5,7 @@
  * - Commercial use requires a separate license.
  */
 
-use crate::{NsTag, XmlAttribute, XmlElement, XmlElementContentType, XmlNamespace};
+use crate::{NsTag, XPathHandler, XmlAttribute, XmlElement, XmlElementContentType, XmlNamespace};
 use anyhow::{Context, Error as AnyError};
 use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
@@ -331,6 +331,24 @@ impl XmlDocument {
                 .map(|(node_id, element)| (*node_id, element.clone_limited()))
                 .collect(),
         }
+    }
+
+    /// Describe this function.
+    ///
+    /// # Arguments
+    ///
+    /// - `&self` (`undefined`) - Describe this parameter.
+    ///
+    /// # Returns
+    ///
+    /// - `Result<Option<Vec<NodeId>>,AnyError>` - Describe the return value.
+    ///
+    /// # Errors
+    ///
+    /// Describe possible errors.
+    pub fn query_xpath(&self, query_path: &str) -> Result<Option<Vec<NodeId>>, AnyError> {
+        let xpath_handler = XPathHandler::new(query_path);
+        Ok(None)
     }
 
     /// Finds the first child element with the given tag name.
