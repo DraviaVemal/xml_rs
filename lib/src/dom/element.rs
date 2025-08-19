@@ -9,13 +9,16 @@ use crate::{utils::validation, NodeId, XmlAttribute, XmlNamespace};
 use anyhow::{Context, Error as AnyError};
 use std::{cell::RefCell, rc::Rc};
 
+pub type Tag = String;
+pub type NsTag = String;
+
 /// Represents the different types of content that can be contained within an XML element.
 ///
 /// This enum differentiates between child elements, text nodes, and comment nodes.
 #[derive(Debug, Clone)]
 pub enum XmlElementContentType {
     /// A child element represented by its NodeId and tag name.
-    Element((NodeId, String)),
+    Element((NodeId, Tag, NsTag)),
     /// A text node containing plain text content.
     Text(String),
     /// A comment node containing comment text.
@@ -31,9 +34,9 @@ pub struct XmlElement {
     /// Unique identifier for this element within the document
     id: NodeId,
     /// Local name of the element (without namespace prefix)
-    tag: String,
+    tag: Tag,
     /// Child elements, text nodes, and comments contained in this element
-    contents: Option<Vec<XmlElementContentType>>,
+    child_contents: Option<Vec<XmlElementContentType>>,
     /// Reference to the parent element's ID, if any
     parent_id: Option<NodeId>,
     /// Namespace alias/prefix for this element, if any
@@ -68,6 +71,12 @@ impl XmlElement {
         Ok(())
     }
 
+    /// Clear all attribute of this element.
+    pub fn clear_attribute_mut(&mut self) -> Result<(), AnyError> {
+        self.attributes = None;
+        Ok(())
+    }
+
     /// Removes an attribute by its local name.
     ///
     /// # Arguments
@@ -94,16 +103,16 @@ impl XmlElement {
     ///
     /// # Returns
     /// * `&mut Option<Vec<XmlElementContentType>>` - Mutable reference to the optional contents.
-    pub fn get_contents_mut(&mut self) -> &mut Option<Vec<XmlElementContentType>> {
-        &mut self.contents
+    pub fn get_child_contents_mut(&mut self) -> &mut Option<Vec<XmlElementContentType>> {
+        &mut self.child_contents
     }
 
     /// Adds a text node to this element's contents.
     ///
     /// # Arguments
     /// * `text` - The text content to add.
-    pub fn add_text_mut(&mut self, text: String) -> Result<&mut XmlElement, AnyError> {
-        self.add_content_mut(XmlElementContentType::Text(text.to_string()))?;
+    pub fn add_text_mut(&mut self, text: &str) -> Result<&mut XmlElement, AnyError> {
+        self.add_child_content_mut(XmlElementContentType::Text(text.to_owned()))?;
         Ok(self)
     }
 
@@ -111,8 +120,8 @@ impl XmlElement {
     ///
     /// # Arguments
     /// * `comment` - The comment text to add.
-    pub fn add_comments_mut(&mut self, comment: String) -> Result<&mut XmlElement, AnyError> {
-        self.add_content_mut(XmlElementContentType::Comment(comment.to_string()))?;
+    pub fn add_comments_mut(&mut self, comment: &str) -> Result<&mut XmlElement, AnyError> {
+        self.add_child_content_mut(XmlElementContentType::Comment(comment.to_owned()))?;
         Ok(self)
     }
 }
@@ -191,8 +200,8 @@ impl XmlElement {
     ///
     /// # Returns
     /// * `&Option<Vec<XmlElementContentType>>` - The contents, if any.
-    pub fn get_contents(&self) -> &Option<Vec<XmlElementContentType>> {
-        &self.contents
+    pub fn get_child_contents(&self) -> &Option<Vec<XmlElementContentType>> {
+        &self.child_contents
     }
 
     /// Gets the count of child elements.
@@ -201,7 +210,7 @@ impl XmlElement {
     /// * `Result<u32, AnyError>` - The count of child elements, or an error if the contents are not accessible.
     pub fn get_child_element_count(&self) -> Result<u32, AnyError> {
         let count = self
-            .contents
+            .child_contents
             .as_ref()
             .context("Failed to open contents")?
             .iter()
@@ -222,26 +231,37 @@ impl XmlElement {
     /// * `Option<NodeId>` - The NodeId of the first matching child, or None if not found.
     pub fn find_first_child(&self, tag: &str) -> Option<NodeId> {
         // Check if contents exist, then find the first child element with matching tag
-        self.contents
+        self.child_contents
             .as_ref()?
             .iter()
             .find_map(|content| match content {
-                XmlElementContentType::Element((child_id, child_tag)) if child_tag == tag => {
+                XmlElementContentType::Element((child_id, child_tag, _)) if child_tag == tag => {
                     Some(*child_id)
                 }
                 _ => None,
             })
     }
 
-    /// Finds the first child element with the given namespaced tag name.
+    /// Finds the first child element with the given tag name.
     ///
     /// # Arguments
-    /// * `tag_ns` - The namespaced tag to search for (e.g., "ns:tag").
+    /// * `tag_ns` - The tag name to search for with nsmaespace.
     ///
     /// # Returns
     /// * `Option<NodeId>` - The NodeId of the first matching child, or None if not found.
     pub fn find_first_child_ns(&self, tag_ns: &str) -> Option<NodeId> {
-        self.find_first_child(tag_ns)
+        // Check if contents exist, then find the first child element with matching tag
+        self.child_contents
+            .as_ref()?
+            .iter()
+            .find_map(|content| match content {
+                XmlElementContentType::Element((child_id, _, child_tag_ns))
+                    if child_tag_ns == tag_ns =>
+                {
+                    Some(*child_id)
+                }
+                _ => None,
+            })
     }
 
     /// Finds all child elements with the given tag name.
@@ -254,11 +274,11 @@ impl XmlElement {
     pub fn find_all_child(&self, tag: &str) -> Option<Vec<NodeId>> {
         // Collect all child elements with matching tag into a vector
         let childs: Vec<NodeId> = self
-            .contents
+            .child_contents
             .as_ref()?
             .iter()
             .filter_map(|content| match content {
-                XmlElementContentType::Element((child_id, child_tag)) if child_tag == tag => {
+                XmlElementContentType::Element((child_id, child_tag, _)) if child_tag == tag => {
                     Some(*child_id)
                 }
                 _ => None,
@@ -273,15 +293,35 @@ impl XmlElement {
         }
     }
 
-    /// Finds all child elements with the given namespaced tag name.
+    /// Finds all child elements with the given tag name.
     ///
     /// # Arguments
-    /// * `tag_ns` - The namespaced tag to search for (e.g., "ns:tag").
+    /// * `tag_ns` - The tag name to search for.
     ///
     /// # Returns
     /// * `Option<Vec<NodeId>>` - A vector of matching child NodeIds, or None if none found.
     pub fn find_all_child_ns(&self, tag_ns: &str) -> Option<Vec<NodeId>> {
-        self.find_all_child(tag_ns)
+        // Collect all child elements with matching tag into a vector
+        let childs: Vec<NodeId> = self
+            .child_contents
+            .as_ref()?
+            .iter()
+            .filter_map(|content| match content {
+                XmlElementContentType::Element((child_id, _, child_tag_ns))
+                    if child_tag_ns == tag_ns =>
+                {
+                    Some(*child_id)
+                }
+                _ => None,
+            })
+            .collect();
+
+        // Return None if no matching children found
+        if childs.is_empty() {
+            None
+        } else {
+            Some(childs)
+        }
     }
 }
 
@@ -295,16 +335,245 @@ impl XmlElement {
     /// # Arguments
     /// * `child_id` - The node ID of the child element to add.
     /// * `tag` - The tag name of the child element.
-    pub(crate) fn add_child_mut(&mut self, child_id: NodeId, tag: String) -> Result<(), AnyError> {
+    pub(crate) fn add_child_mut(
+        &mut self,
+        child_id: NodeId,
+        tag: &str,
+        tag_ns: &str,
+    ) -> Result<(), AnyError> {
         // Ensure contents vector exists before adding a new child
-        if self.contents.is_none() {
-            self.contents = Some(Vec::new());
+        if self.child_contents.is_none() {
+            self.child_contents = Some(Vec::new());
         }
         // Add the child element to the contents collection
-        self.contents
+        self.child_contents
             .as_mut()
             .context("Failed to insert child element")?
-            .push(XmlElementContentType::Element((child_id, tag)));
+            .push(XmlElementContentType::Element((
+                child_id,
+                tag.to_owned(),
+                tag_ns.to_owned(),
+            )));
+        Ok(())
+    }
+
+    pub(crate) fn add_child_after_tag_mut(
+        &mut self,
+        child_id: NodeId,
+        new_tag: &str,
+        new_tag_ns: &str,
+        after_tag: &str,
+    ) -> Result<(), AnyError> {
+        // Ensure contents vector exists before adding a new child
+        if self.child_contents.is_none() {
+            self.child_contents = Some(Vec::new());
+        }
+
+        // Add the child element to the contents collection
+        let child_collection = self
+            .child_contents
+            .as_mut()
+            .context("Failed to insert child element")?;
+        let last_id = child_collection
+            .iter()
+            .filter_map(|item| match item {
+                XmlElementContentType::Element((id, tag, _)) => {
+                    if tag == after_tag {
+                        Some(*id)
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            })
+            .collect::<Vec<u32>>();
+        if let Some(last_id) = last_id.last() {
+            if (last_id + 1) < child_collection.len() as u32 {
+                child_collection.push(XmlElementContentType::Element((
+                    child_id,
+                    new_tag.to_owned(),
+                    new_tag_ns.to_owned(),
+                )));
+            } else {
+                child_collection.insert(
+                    *last_id as usize,
+                    XmlElementContentType::Element((
+                        child_id,
+                        new_tag.to_owned(),
+                        new_tag_ns.to_owned(),
+                    )),
+                );
+            }
+        } else {
+            // Add Element at end
+            child_collection.push(XmlElementContentType::Element((
+                child_id,
+                new_tag.to_owned(),
+                new_tag_ns.to_owned(),
+            )));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn add_child_before_tag_mut(
+        &mut self,
+        child_id: NodeId,
+        new_tag: &str,
+        new_tag_ns: &str,
+        before_tag: &str,
+    ) -> Result<(), AnyError> {
+        // Ensure contents vector exists before adding a new child
+        if self.child_contents.is_none() {
+            self.child_contents = Some(Vec::new());
+        }
+        // Add the child element to the contents collection
+        let child_collection = self
+            .child_contents
+            .as_mut()
+            .context("Failed to insert child element")?;
+        let first_id = child_collection
+            .iter()
+            .filter_map(|item| match item {
+                XmlElementContentType::Element((id, tag, _)) => {
+                    if tag == before_tag {
+                        Some(*id)
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            })
+            .collect::<Vec<u32>>();
+        if let Some(first_id) = first_id.first() {
+            child_collection.insert(
+                *first_id as usize,
+                XmlElementContentType::Element((
+                    child_id,
+                    new_tag.to_owned(),
+                    new_tag_ns.to_owned(),
+                )),
+            );
+        } else {
+            // Add Element at end
+            child_collection.insert(
+                0,
+                XmlElementContentType::Element((
+                    child_id,
+                    new_tag.to_owned(),
+                    new_tag_ns.to_owned(),
+                )),
+            );
+        }
+        Ok(())
+    }
+
+    pub(crate) fn add_child_after_tag_ns_mut(
+        &mut self,
+        child_id: NodeId,
+        new_tag: &str,
+        new_tag_ns: &str,
+        after_tag_ns: &str,
+    ) -> Result<(), AnyError> {
+        // Ensure contents vector exists before adding a new child
+        if self.child_contents.is_none() {
+            self.child_contents = Some(Vec::new());
+        }
+
+        // Add the child element to the contents collection
+        let child_collection = self
+            .child_contents
+            .as_mut()
+            .context("Failed to insert child element")?;
+        let last_id = child_collection
+            .iter()
+            .filter_map(|item| match item {
+                XmlElementContentType::Element((id, _, tag_ns)) => {
+                    if tag_ns == after_tag_ns {
+                        Some(*id)
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            })
+            .collect::<Vec<u32>>();
+        if let Some(last_id) = last_id.last() {
+            if (last_id + 1) < child_collection.len() as u32 {
+                child_collection.push(XmlElementContentType::Element((
+                    child_id,
+                    new_tag.to_owned(),
+                    new_tag_ns.to_owned(),
+                )));
+            } else {
+                child_collection.insert(
+                    *last_id as usize,
+                    XmlElementContentType::Element((
+                        child_id,
+                        new_tag.to_owned(),
+                        new_tag_ns.to_owned(),
+                    )),
+                );
+            }
+        } else {
+            // Add Element at end
+            child_collection.push(XmlElementContentType::Element((
+                child_id,
+                new_tag.to_owned(),
+                new_tag_ns.to_owned(),
+            )));
+        }
+        Ok(())
+    }
+
+    pub(crate) fn add_child_before_tag_ns_mut(
+        &mut self,
+        child_id: NodeId,
+        new_tag: &str,
+        new_tag_ns: &str,
+        before_tag_ns: &str,
+    ) -> Result<(), AnyError> {
+        // Ensure contents vector exists before adding a new child
+        if self.child_contents.is_none() {
+            self.child_contents = Some(Vec::new());
+        }
+        // Add the child element to the contents collection
+        let child_collection = self
+            .child_contents
+            .as_mut()
+            .context("Failed to insert child element")?;
+        let first_id = child_collection
+            .iter()
+            .filter_map(|item| match item {
+                XmlElementContentType::Element((id, _, tag_ns)) => {
+                    if tag_ns == before_tag_ns {
+                        Some(*id)
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            })
+            .collect::<Vec<u32>>();
+        if let Some(first_id) = first_id.first() {
+            child_collection.insert(
+                *first_id as usize,
+                XmlElementContentType::Element((
+                    child_id,
+                    new_tag.to_owned(),
+                    new_tag_ns.to_owned(),
+                )),
+            );
+        } else {
+            // Add Element at end
+            child_collection.insert(
+                0,
+                XmlElementContentType::Element((
+                    child_id,
+                    new_tag.to_owned(),
+                    new_tag_ns.to_owned(),
+                )),
+            );
+        }
         Ok(())
     }
 
@@ -326,7 +595,7 @@ impl XmlElement {
 
     /// Clears all content (children, text, comments) from this element.
     pub(crate) fn clear_content_mut(&mut self) {
-        self.contents = None;
+        self.child_contents = None;
     }
 
     /// Adds content (child, text, or comment) to this element.
@@ -336,16 +605,16 @@ impl XmlElement {
     ///
     /// # Returns
     /// * `&mut Self` - For method chaining.
-    pub(crate) fn add_content_mut(
+    pub(crate) fn add_child_content_mut(
         &mut self,
         content_type: XmlElementContentType,
     ) -> Result<&mut Self, AnyError> {
         // Ensure contents vector exists before adding content
-        if self.contents.is_none() {
-            self.contents = Some(Vec::new());
+        if self.child_contents.is_none() {
+            self.child_contents = Some(Vec::new());
         }
         // Add the content to the contents collection
-        self.contents
+        self.child_contents
             .as_mut()
             .context("Failed to insert content item")?
             .push(content_type);
@@ -381,7 +650,7 @@ impl XmlElement {
         XmlElement {
             id: self.id,
             tag: self.tag.clone(),
-            contents: self.contents.clone(),
+            child_contents: self.child_contents.clone(),
             parent_id: self.parent_id.clone(),
             ns_alias: self.ns_alias.clone(),
             attributes: self.attributes.clone(),
@@ -438,7 +707,7 @@ impl XmlElement {
     /// # Returns
     /// * `Result<XmlElement, AnyError>` - A new element or an error if validation fails.
     pub(crate) fn new(
-        tag: String,
+        tag: &str,
         attributes: Option<Vec<XmlAttribute>>,
         mut namespace_context: Rc<RefCell<XmlNamespace>>,
     ) -> Result<XmlElement, AnyError> {
@@ -486,7 +755,7 @@ impl XmlElement {
             // Parse the tag for namespace prefix
             let (ns_alias, tag) = if let Some(pos) = tag.find(':') {
                 let (ns, tag) = tag.split_at(pos);
-                (Some(ns.to_string()), tag[1..].to_string())
+                (Some(ns.to_string()), &tag[1..])
             } else {
                 (None, tag)
             };
@@ -494,10 +763,10 @@ impl XmlElement {
             // Create and return the new element
             Ok(XmlElement {
                 id: 0, // Initial ID, will be set by document
-                tag,
+                tag: tag.to_owned(),
                 attributes: filtered_attributes,
                 parent_id: None,
-                contents: None,
+                child_contents: None,
                 ns_alias,
                 ns_context_override,
                 namespace_context,
