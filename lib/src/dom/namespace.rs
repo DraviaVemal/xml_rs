@@ -8,7 +8,9 @@
 use crate::XmlAttribute;
 use std::collections::HashMap;
 
+/// Namespace alias key
 pub type NsAlias = String;
+/// Namespace url
 pub type NsUrl = String;
 
 /// Manages XML namespace mappings between aliases (prefixes) and URLs.
@@ -33,10 +35,10 @@ impl XmlNamespace {
     /// # Arguments
     /// * `alias` - The namespace alias (prefix).
     /// * `url` - The namespace URI.
-    pub(crate) fn add_url_alias_mut(&mut self, alias: String, url: String) {
+    pub(crate) fn add_url_alias_mut(&mut self, alias: &str, url: &str) {
         // Insert both directions for bidirectional lookup capability
-        self.alias_url.insert(alias.clone(), url.clone());
-        self.url_alias.insert(url, alias);
+        self.alias_url.insert(alias.to_owned(), url.to_owned());
+        self.url_alias.insert(url.to_owned(), alias.to_owned());
     }
 
     /// Adds a namespace from an XML attribute (usually an xmlns attribute).
@@ -51,12 +53,12 @@ impl XmlNamespace {
             .map(|v| v.to_string())
             .collect::<Vec<String>>()
             .get(1)
-            .unwrap_or(&"".to_string())
-            .clone();
-        let url = ns_attribute.get_value().to_string();
+            .cloned()
+            .unwrap_or_default();
+        let url = ns_attribute.get_value();
 
         // Add the mapping
-        self.add_url_alias_mut(ns_name, url);
+        self.add_url_alias_mut(&ns_name, url);
     }
 }
 
@@ -72,7 +74,7 @@ impl XmlNamespace {
     ///
     /// # Returns
     /// * `Option<&String>` - The namespace URL if the alias is found, None otherwise.
-    pub(crate) fn get_url(&self, alias: &str) -> Option<&String> {
+    pub(crate) fn _get_url(&self, alias: &str) -> Option<&String> {
         self.alias_url.get(alias)
     }
 
@@ -83,7 +85,7 @@ impl XmlNamespace {
     ///
     /// # Returns
     /// * `Option<&String>` - The alias/prefix if the URL is found, None otherwise.
-    pub(crate) fn get_alias(&self, url: &str) -> Option<&String> {
+    pub(crate) fn _get_alias(&self, url: &str) -> Option<&String> {
         self.url_alias.get(url)
     }
 

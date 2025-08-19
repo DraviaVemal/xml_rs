@@ -7,7 +7,10 @@
 
 use crate::{log_elapsed, NodeId, XmlAttribute, XmlDocument, XmlElementContentType};
 use anyhow::{Context, Error as AnyError, Result as AnyResult};
-use quick_xml::{events::BytesStart, events::Event, NsReader};
+use quick_xml::{
+    events::{BytesStart, Event},
+    NsReader,
+};
 use std::{fs, io::Cursor};
 
 /// Deserializer for converting XML data into an XmlDocument object.
@@ -46,10 +49,10 @@ impl XmlDeserializer {
         // Create a reader for the XML content
         let mut reader: NsReader<Cursor<Vec<u8>>> = NsReader::from_reader(Cursor::new(xml_str));
         let mut xml_document = XmlDocument::new();
-        
+
         // Configure the reader to trim whitespace in text nodes
         reader.config_mut().trim_text(true);
-        
+
         // Parse the XML content, measuring the elapsed time in debug mode
         log_elapsed!(
             || {
@@ -58,7 +61,7 @@ impl XmlDeserializer {
             },
             "Serializing"
         )?;
-        
+
         Ok(xml_document)
     }
 }
@@ -83,12 +86,12 @@ impl XmlDeserializer {
         let mut temp_buffer = Vec::new();
         let mut root_loaded = false;
         let mut active_xml_element_id: NodeId = 0;
-        
+
         // Process XML events until EOF or error
         loop {
             match reader.read_event_into(&mut temp_buffer) {
                 Err(e) => return Err(e.into()),
-                
+
                 // Process XML declaration
                 Ok(Event::Decl(declaration)) => {
                     // Extract and set version information
@@ -97,7 +100,7 @@ impl XmlDeserializer {
                         .map(|char| String::from_utf8_lossy(&char).to_string())
                         .unwrap_or_default();
                     xml_document.set_version_mut(version);
-                    
+
                     // Extract and set encoding information, defaulting to utf-8
                     let encoding = match declaration.encoding() {
                         Some(Ok(enc)) => String::from_utf8_lossy(&enc).to_string(),
@@ -105,13 +108,13 @@ impl XmlDeserializer {
                     };
                     xml_document.set_encoding_mut(encoding);
                 }
-                
+
                 // Process empty elements (self-closing tags)
                 Ok(Event::Empty(element)) => {
                     // Extract tag name and attributes
                     let tag = String::from_utf8_lossy(element.name().into_inner()).to_string();
                     let attributes = Self::get_attributes_string(element)?;
-                    
+
                     if root_loaded {
                         // Add as child element to current active element
                         xml_document
@@ -120,18 +123,18 @@ impl XmlDeserializer {
                     } else {
                         // Set as root element
                         xml_document
-                            .create_root_element_mut(tag, Some(attributes))
+                            .create_root_element_mut(&tag, Some(attributes))
                             .context("Create XML Root Element Failed")?;
                         root_loaded = true
                     }
                 }
-                
+
                 // Process start of element
                 Ok(Event::Start(element)) => {
                     // Extract tag name and attributes
                     let tag = String::from_utf8_lossy(element.name().into_inner()).to_string();
                     let attributes = Self::get_attributes_string(element)?;
-                    
+
                     if root_loaded {
                         // Add as child element to current active element and make it the new active element
                         active_xml_element_id = xml_document
@@ -140,12 +143,12 @@ impl XmlDeserializer {
                     } else {
                         // Set as root element and make it the active element
                         active_xml_element_id = xml_document
-                            .create_root_element_mut(tag, Some(attributes))
+                            .create_root_element_mut(&tag, Some(attributes))
                             .context("Create XML Root Element Failed")?;
                         root_loaded = true
                     }
                 }
-                
+
                 // Process text content
                 Ok(Event::Text(byte_text)) => {
                     // Unescape and add text to current active element
@@ -156,22 +159,25 @@ impl XmlDeserializer {
                     xml_document
                         .get_element_mut(active_xml_element_id)
                         .context("Getting Target Element for text Failed")?
-                        .add_content_mut(XmlElementContentType::Text(text));
+                        .add_child_content_mut(XmlElementContentType::Text(text))
+                        .context("Failed to add text content")?;
                 }
-                
+
                 // Process comments
                 Ok(Event::Comment(byte_comment)) => {
                     // Unescape and add comment to current active element
+                    // Comments are preserved in the DOM and will be included during serialization
                     let comment = byte_comment
                         .unescape()
-                        .context("XML Text parsing error")?
+                        .context("XML Comment parsing error")?
                         .to_string();
                     xml_document
                         .get_element_mut(active_xml_element_id)
                         .context("Getting Target Element for comments Failed")?
-                        .add_content_mut(XmlElementContentType::Comment(comment));
+                        .add_child_content_mut(XmlElementContentType::Comment(comment))
+                        .context("Failed to add comments")?;
                 }
-                
+
                 // Process end of element
                 Ok(Event::End(element)) => {
                     // Extract tag name
@@ -179,7 +185,7 @@ impl XmlDeserializer {
                     let element = xml_document
                         .get_element_mut(active_xml_element_id)
                         .context("Invalid XML Tree Parsing Failed.")?;
-                    
+
                     // Verify matching start and end tags
                     if element.get_tag_ns() == tag {
                         // Move back up to parent element
@@ -195,20 +201,20 @@ impl XmlDeserializer {
                         )));
                     }
                 }
-                
+
                 // End of file reached
                 Ok(Event::Eof) => {
                     break;
                 }
-                
+
                 // Ignore other events
                 _ => {}
             }
-            
+
             // Clear buffer for next event
             temp_buffer.clear();
         }
-        
+
         Ok(())
     }
 

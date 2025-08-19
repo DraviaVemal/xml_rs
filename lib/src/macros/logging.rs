@@ -20,10 +20,6 @@
 /// * `$func_name` - The function or expression to time.
 /// * `$msg` - (Optional) A message to include in the log.
 ///
-/// # Examples
-/// ```
-/// let result = log_elapsed!(expensive_function(), "Expensive operation");
-/// ```
 #[macro_export]
 macro_rules! log_elapsed {
     // Form with custom message
@@ -34,7 +30,7 @@ macro_rules! log_elapsed {
             let start = Instant::now();
             let result = $func_name();
             let elapsed = start.elapsed();
-            
+
             // Only log if the operation took more than 2 seconds
             if elapsed.as_secs() > 2 {
                 println!("Function {} : Elapsed :{:?}", $msg, elapsed);
@@ -45,7 +41,7 @@ macro_rules! log_elapsed {
             $func_name()
         }
     }};
-    
+
     // Form without custom message
     ($func_name:expr) => {{
         if cfg!(debug_assertions) {
@@ -54,7 +50,7 @@ macro_rules! log_elapsed {
             let start = Instant::now();
             let fn_return = $func_name;
             let elapsed = start.elapsed();
-            
+
             // Only log if the operation took more than 2 seconds
             if elapsed.as_secs() > 2 {
                 println!("Function {}: Elapsed {:?}", stringify!($func_name), elapsed);

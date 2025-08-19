@@ -49,7 +49,7 @@ impl XmlSerializer {
     /// # Returns
     /// * `AnyResult<Vec<u8>, AnyError>` - The serialized XML as bytes, or an error.
     pub fn xml_tree_to_vec(xml_document: &mut XmlDocument) -> AnyResult<Vec<u8>, AnyError> {
-        let mut xml_content = String::new();
+        let mut xml_content = String::default();
 
         // Add XML declaration with conditional behavior based on build mode
         #[cfg(debug_assertions)]
@@ -110,7 +110,7 @@ impl XmlSerializer {
     /// # Returns
     /// * `Result<String, AnyError>` - The formatted tag string with attributes.
     fn build_element(element: &XmlElement) -> Result<String, AnyError> {
-        let mut element_part = String::new();
+        let mut element_part = String::default();
 
         // Add the tag name with namespace if present
         element_part.push_str(&element.get_tag_ns());
@@ -160,7 +160,7 @@ impl XmlSerializer {
         xml_document: &mut XmlDocument,
         element_id: NodeId,
     ) -> Result<String, AnyError> {
-        let mut content_part = String::new();
+        let mut content_part = String::default();
 
         // Get a copy of the element to work with
         let element = xml_document
@@ -169,7 +169,7 @@ impl XmlSerializer {
             .clone_limited();
 
         // Check if the element has contents
-        if let Some(contents) = element.get_contents() {
+        if let Some(contents) = element.get_child_contents() {
             // Start tag with attributes
             content_part.push_str(&format!("<{}>", Self::build_element(&element)?));
 
@@ -177,7 +177,7 @@ impl XmlSerializer {
             for content in contents {
                 match content {
                     // Recursively process child elements
-                    XmlElementContentType::Element((id, _)) => {
+                    XmlElementContentType::Element((id, _, _)) => {
                         let element_content = Self::build_element_content(xml_document, *id)
                             .context("Failed to build element content")?;
                         content_part.push_str(&element_content);
@@ -213,7 +213,7 @@ impl XmlSerializer {
     /// # Returns
     /// * `AnyResult<String, AnyError>` - The complete XML string or an error.
     fn build_xml_tree(xml_document: &mut XmlDocument) -> AnyResult<String, AnyError> {
-        let mut xml_part = String::new();
+        let mut xml_part = String::default();
 
         // Get the root element ID
         let current_id = xml_document.get_root_id();
