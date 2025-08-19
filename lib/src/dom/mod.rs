@@ -9,8 +9,10 @@ mod attribute;
 mod document;
 mod element;
 mod namespace;
+mod xpath;
 
 pub use attribute::*;
 pub use document::*;
 pub use element::*;
 pub use namespace::*;
+pub use xpath::*;
