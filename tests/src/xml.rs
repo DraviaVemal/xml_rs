@@ -148,7 +148,7 @@ mod xml_test {
             .expect("Failed to get title element");
 
         // Check the title's content
-        if let Some(contents) = title.get_contents() {
+        if let Some(contents) = title.get_child_contents() {
             let has_correct_text = contents.iter().any(|content| {
                 if let XmlElementContentType::Text(text) = content {
                     text == "XML Basics"
@@ -171,7 +171,7 @@ mod xml_test {
         // Create root element
         let root_id = document
             .create_root_element_mut(
-                "root".to_string(),
+                "root",
                 Some(vec![XmlAttribute::new(
                     "version".to_string(),
                     "1.0".to_string(),
@@ -195,7 +195,7 @@ mod xml_test {
             .get_element_mut(child_id)
             .expect("Failed to get text element");
         element
-            .add_text_mut("Hello World".to_string())
+            .add_text_mut("Hello World")
             .expect("Failed to add text");
 
         // Since we can't directly add text, we'll verify differently later
@@ -213,9 +213,9 @@ mod xml_test {
         }
 
         // Verify the child element exists in root's contents
-        if let Some(contents) = root.get_contents() {
+        if let Some(contents) = root.get_child_contents() {
             let has_child = contents.iter().any(|content| {
-                if let XmlElementContentType::Element((id, tag)) = content {
+                if let XmlElementContentType::Element((id, tag, _)) = content {
                     *id == child_id && tag == "child"
                 } else {
                     false
@@ -234,7 +234,7 @@ mod xml_test {
         assert_eq!(child.get_tag(), "child", "Child tag should be 'child'");
 
         // Check the child's text content
-        if let Some(contents) = child.get_contents() {
+        if let Some(contents) = child.get_child_contents() {
             let has_text = contents.iter().any(|content| {
                 if let XmlElementContentType::Text(text) = content {
                     text == "Hello World"
@@ -256,7 +256,7 @@ mod xml_test {
 
         // Create root element
         let root_id = document
-            .create_root_element_mut("root".to_string(), None)
+            .create_root_element_mut("root", None)
             .expect("Failed to create root element");
 
         // Add two child elements
@@ -334,7 +334,7 @@ mod xml_test {
 
         // Add a root element
         document
-            .create_root_element_mut("root".to_string(), None)
+            .create_root_element_mut("root", None)
             .expect("Failed to create root element");
 
         // Now it should serialize successfully
@@ -352,7 +352,7 @@ mod xml_test {
 
         // Create root element
         let root_id = document
-            .create_root_element_mut("root".to_string(), None)
+            .create_root_element_mut("root", None)
             .expect("Failed to create root element");
 
         // Add a child element with special characters in text
@@ -364,7 +364,7 @@ mod xml_test {
         document
             .get_element_mut(special_id)
             .expect("Failed to get special element")
-            .add_text_mut("a<>&\"'".to_string())
+            .add_text_mut("a<>&\"'")
             .expect("Failed to add text to element");
         document
             .append_child_element_mut(root_id, "special", None)
@@ -391,7 +391,7 @@ mod xml_test {
             .get_element(special_id)
             .expect("Failed to get special element");
 
-        if let Some(contents) = special.get_contents() {
+        if let Some(contents) = special.get_child_contents() {
             let has_special_text = contents.iter().any(|content| {
                 if let XmlElementContentType::Text(text) = content {
                     text.contains("a<>&\"'")

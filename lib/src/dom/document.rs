@@ -5,7 +5,7 @@
  * - Commercial use requires a separate license.
  */
 
-use crate::{XmlAttribute, XmlElement, XmlElementContentType, XmlNamespace};
+use crate::{NsTag, XmlAttribute, XmlElement, XmlElementContentType, XmlNamespace};
 use anyhow::{Context, Error as AnyError};
 use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
@@ -57,7 +57,7 @@ impl XmlDocument {
     /// * `Result<NodeId, AnyError>` - The node ID of the created root element, or an error.
     pub fn create_root_element_mut(
         &mut self,
-        tag: String,
+        tag: &str,
         attributes: Option<Vec<XmlAttribute>>,
     ) -> Result<NodeId, AnyError> {
         // Generate a new unique ID for the element
@@ -73,7 +73,7 @@ impl XmlDocument {
         element.set_id_mut(node_id);
 
         // Add the element to the collection
-        self.xml_element_collection.insert(node_id, element);
+        self.add_element(node_id, element);
 
         Ok(node_id)
     }
@@ -90,34 +90,92 @@ impl XmlDocument {
     pub fn append_child_element_mut(
         &mut self,
         parent_id: NodeId,
-        tag: &str,
+        new_tag: &str,
         attributes: Option<Vec<XmlAttribute>>,
     ) -> Result<NodeId, AnyError> {
-        // Generate a new unique ID for the element
-        self.running_id += 1;
-        let node_id = self.running_id;
-
-        // Get the namespace context from the parent element
-        let ns_context = self
-            .get_element(parent_id)
-            .context("Failed to pull parent element")?
-            .get_ns_context();
-
-        // Create the child element with the parent's namespace context
-        let mut child_element = XmlElement::new(tag.to_string(), attributes, ns_context)
-            .context("Failed to create child element")?;
-
-        // Set the element's ID and parent ID
-        child_element.set_id_mut(node_id);
-        child_element.set_parent_id_mut(parent_id.clone());
-
-        // Add the child element to the collection
-        self.add_element(node_id, child_element);
+        let (node_id, tag_ns) =
+            self.create_insert_element_into_collection(parent_id, new_tag, attributes)?;
 
         // Add the child to the parent's contents
         self.get_element_mut(parent_id)
             .context("Parent element not found")?
-            .add_child_mut(node_id, tag.to_string())
+            .add_child_mut(node_id, new_tag, &tag_ns)
+            .context("Failed to add child element to parent")?;
+
+        Ok(node_id)
+    }
+
+    pub fn inser_child_element_after_last_tag_mut(
+        &mut self,
+        parent_id: NodeId,
+        tag: &str,
+        last_tag: &str,
+        attributes: Option<Vec<XmlAttribute>>,
+    ) -> Result<NodeId, AnyError> {
+        let (node_id, tag_ns) =
+            self.create_insert_element_into_collection(parent_id, tag, attributes)?;
+
+        // Add the child to the parent's contents
+        self.get_element_mut(parent_id)
+            .context("Parent element not found")?
+            .add_child_after_tag_mut(node_id, tag, &tag_ns, last_tag)
+            .context("Failed to add child element to parent")?;
+
+        Ok(node_id)
+    }
+
+    pub fn inser_child_element_before_first_tag_mut(
+        &mut self,
+        parent_id: NodeId,
+        tag: &str,
+        first_tag: &str,
+        attributes: Option<Vec<XmlAttribute>>,
+    ) -> Result<NodeId, AnyError> {
+        let (node_id, tag_ns) =
+            self.create_insert_element_into_collection(parent_id, tag, attributes)?;
+
+        // Add the child to the parent's contents
+        self.get_element_mut(parent_id)
+            .context("Parent element not found")?
+            .add_child_before_tag_mut(node_id, tag, &tag_ns, first_tag)
+            .context("Failed to add child element to parent")?;
+
+        Ok(node_id)
+    }
+
+    pub fn inser_child_element_after_last_tag_ns_mut(
+        &mut self,
+        parent_id: NodeId,
+        tag: &str,
+        last_tag_ns: &str,
+        attributes: Option<Vec<XmlAttribute>>,
+    ) -> Result<NodeId, AnyError> {
+        let (node_id, tag_ns) =
+            self.create_insert_element_into_collection(parent_id, tag, attributes)?;
+
+        // Add the child to the parent's contents
+        self.get_element_mut(parent_id)
+            .context("Parent element not found")?
+            .add_child_after_tag_ns_mut(node_id, tag, &tag_ns, last_tag_ns)
+            .context("Failed to add child element to parent")?;
+
+        Ok(node_id)
+    }
+
+    pub fn inser_child_element_before_first_tag_ns_mut(
+        &mut self,
+        parent_id: NodeId,
+        tag: &str,
+        first_tag_ns: &str,
+        attributes: Option<Vec<XmlAttribute>>,
+    ) -> Result<NodeId, AnyError> {
+        let (node_id, tag_ns) =
+            self.create_insert_element_into_collection(parent_id, tag, attributes)?;
+
+        // Add the child to the parent's contents
+        self.get_element_mut(parent_id)
+            .context("Parent element not found")?
+            .add_child_before_tag_ns_mut(node_id, tag, &tag_ns, first_tag_ns)
             .context("Failed to add child element to parent")?;
 
         Ok(node_id)
@@ -315,11 +373,11 @@ impl XmlDocument {
         if let Some(contents) = self
             .get_element(parent_id)
             .context("Failed to pull parent element")?
-            .get_contents()
+            .get_child_contents()
         {
             // Iterate through each content item
             for content in contents {
-                if let XmlElementContentType::Element((child_id, _)) = content {
+                if let XmlElementContentType::Element((child_id, _, _)) = content {
                     // Check if the child element has the specified attribute with the specified value
                     if self
                         .get_element(*child_id)
@@ -373,11 +431,11 @@ impl XmlDocument {
         if let Some(contents) = self
             .get_element(parent_id)
             .context("Failed to pull parent element")?
-            .get_contents()
+            .get_child_contents()
         {
             // Iterate through each content item
             for content in contents {
-                if let XmlElementContentType::Element((child_id, _)) = content {
+                if let XmlElementContentType::Element((child_id, _, _)) = content {
                     // Check if the child element has the specified attribute with the specified value
                     if self
                         .get_element(*child_id)
@@ -434,11 +492,11 @@ impl XmlDocument {
             if let Some(parent) = self
                 .get_element_mut(parent_id)
                 .context("Failed to get parent element")?
-                .get_contents_mut()
+                .get_child_contents_mut()
             {
                 // Filter out the element from parent's contents
                 parent.retain(|content| match content {
-                    XmlElementContentType::Element((child_id, _)) => *child_id != element_id,
+                    XmlElementContentType::Element((child_id, _, _)) => *child_id != element_id,
                     _ => true,
                 });
             }
@@ -511,17 +569,40 @@ impl XmlDocument {
         if let Some(contents) = self
             .get_element_mut(element_id)
             .context("Failed to get element")?
-            .get_contents()
+            .get_child_contents()
             .clone()
         {
             // Process each content item
             for content in contents {
-                if let XmlElementContentType::Element((child_id, _)) = content {
+                if let XmlElementContentType::Element((child_id, _, _)) = content {
                     // Recursively clear the subtree of each child element
                     self.clear_element_subtree_mut(child_id)?;
                 }
             }
         }
         Ok(())
+    }
+}
+
+impl XmlDocument {
+    fn create_insert_element_into_collection(
+        &mut self,
+        parent_id: NodeId,
+        new_tag: &str,
+        attributes: Option<Vec<XmlAttribute>>,
+    ) -> Result<(NodeId, NsTag), AnyError> {
+        self.running_id += 1;
+        let node_id = self.running_id;
+        let ns_context = self
+            .get_element(parent_id)
+            .context("Failed to pull parent element")?
+            .get_ns_context();
+        let mut child_element = XmlElement::new(new_tag, attributes, ns_context)
+            .context("Failed to create child element")?;
+        child_element.set_id_mut(node_id);
+        child_element.set_parent_id_mut(parent_id.clone());
+        let tag_ns = child_element.get_tag_ns();
+        self.add_element(node_id, child_element);
+        Ok((node_id, tag_ns))
     }
 }

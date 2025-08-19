@@ -123,7 +123,7 @@ impl XmlDeserializer {
                     } else {
                         // Set as root element
                         xml_document
-                            .create_root_element_mut(tag, Some(attributes))
+                            .create_root_element_mut(&tag, Some(attributes))
                             .context("Create XML Root Element Failed")?;
                         root_loaded = true
                     }
@@ -143,7 +143,7 @@ impl XmlDeserializer {
                     } else {
                         // Set as root element and make it the active element
                         active_xml_element_id = xml_document
-                            .create_root_element_mut(tag, Some(attributes))
+                            .create_root_element_mut(&tag, Some(attributes))
                             .context("Create XML Root Element Failed")?;
                         root_loaded = true
                     }
@@ -159,7 +159,7 @@ impl XmlDeserializer {
                     xml_document
                         .get_element_mut(active_xml_element_id)
                         .context("Getting Target Element for text Failed")?
-                        .add_content_mut(XmlElementContentType::Text(text))
+                        .add_child_content_mut(XmlElementContentType::Text(text))
                         .context("Failed to add text content")?;
                 }
 
@@ -173,7 +173,7 @@ impl XmlDeserializer {
                     xml_document
                         .get_element_mut(active_xml_element_id)
                         .context("Getting Target Element for comments Failed")?
-                        .add_content_mut(XmlElementContentType::Comment(comment))
+                        .add_child_content_mut(XmlElementContentType::Comment(comment))
                         .context("Failed to add comments")?;
                 }
 

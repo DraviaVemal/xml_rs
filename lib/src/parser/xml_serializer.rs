@@ -169,7 +169,7 @@ impl XmlSerializer {
             .clone_limited();
 
         // Check if the element has contents
-        if let Some(contents) = element.get_contents() {
+        if let Some(contents) = element.get_child_contents() {
             // Start tag with attributes
             content_part.push_str(&format!("<{}>", Self::build_element(&element)?));
 
@@ -177,7 +177,7 @@ impl XmlSerializer {
             for content in contents {
                 match content {
                     // Recursively process child elements
-                    XmlElementContentType::Element((id, _)) => {
+                    XmlElementContentType::Element((id, _, _)) => {
                         let element_content = Self::build_element_content(xml_document, *id)
                             .context("Failed to build element content")?;
                         content_part.push_str(&element_content);
