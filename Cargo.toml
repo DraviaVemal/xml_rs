@@ -7,3 +7,4 @@ anyhow = "1.0.90"
 quick-xml = "0.37.5"
 criterion = "0.7.0"
 draviavemal-xml_rs = { path = "lib" }
+chrono = "0.4.45"
