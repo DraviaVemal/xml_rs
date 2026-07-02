@@ -84,42 +84,29 @@ impl XmlElement {
         Ok(())
     }
 
-    /// Replaces an existing attribute matching the given attribute's name.
+    /// Adds or replaces an attribute on this element.
     ///
-    /// The attribute is matched by its namespaced name. If no attribute with the same
-    /// name exists, an error is returned.
+    /// The attribute is matched by its namespaced name. If an attribute with the same
+    /// name already exists, it is replaced in-place at its current position. Otherwise,
+    /// the attribute is appended to the end of the attribute list.
     ///
     /// # Arguments
-    /// * `attribute` - The XML attribute that replaces the existing one with the same name.
+    /// * `attribute` - The XML attribute to add or replace.
     ///
     /// # Returns
-    /// * `Result<(), AnyError>` - An empty result if the attribute was replaced successfully,
-    ///   or an error if no attribute with the same name exists.
-    pub fn replace_attribute_mut(
-        &mut self,
-        attribute: XmlAttribute,
-    ) -> Result<(), AnyError> {
-        let attributes = self
-            .attributes
-            .as_mut()
-            .context("Element has no attributes to replace")?;
+    /// * `Result<(), AnyError>` - Ok on success.
+    pub fn add_replace_attribute_mut(&mut self, attribute: XmlAttribute) -> Result<(), AnyError> {
+        let attributes = self.attributes.get_or_insert_with(Vec::new);
         // Locate the existing attribute by its namespaced name
-        let existing_index = attributes
-            .iter()
-            .position(|existing_attribute| {
-                existing_attribute.get_ns_name() == attribute.get_ns_name()
-            })
-            .ok_or_else(|| {
-                AnyError::msg(format!(
-                    "Attribute '{}' does not exist on this element",
-                    attribute.get_ns_name()
-                ))
-            })?;
-        // Replace the matched attribute with the new one
-        attributes[existing_index] = attribute;
-        attributes
-            .get(existing_index)
-            .context("Failed to retrieve replaced attribute")?;
+        let existing_index = attributes.iter().position(|existing_attribute| {
+            existing_attribute.get_ns_name() == attribute.get_ns_name()
+        });
+        match existing_index {
+            // Replace in-place at the existing position
+            Some(index) => attributes[index] = attribute,
+            // Otherwise append to the end
+            None => attributes.push(attribute),
+        }
         Ok(())
     }
 
@@ -156,6 +143,7 @@ impl XmlElement {
     }
 
     /// Removes an attribute by its local name.
+    /// Caution: This method does not consider namespaces. If multiple attributes share the same local name but different namespaces, all will be removed.
     ///
     /// # Arguments
     /// * `name` - The local name of the attribute to remove.
