@@ -58,25 +58,101 @@ impl XmlElement {
 
     /// Adds an attribute to this element.
     ///
+    /// The attribute name must be unique within the element. If an attribute with the
+    /// same namespaced name already exists, an error is returned.
+    ///
     /// # Arguments
     /// * `attribute` - The XML attribute to add to this element.
+    ///
+    /// # Returns
+    /// * `Result<(), AnyError>` - An empty result if the attribute was added successfully,
+    ///   or an error if an attribute with the same name already exists.
     pub fn add_attribute_mut(&mut self, attribute: XmlAttribute) -> Result<(), AnyError> {
-        // Ensure attributes vector exists before adding a new attribute
-        if self.attributes.is_none() {
-            self.attributes = Some(Vec::new());
+        let attributes = self.attributes.get_or_insert_with(Vec::new);
+        // Reject duplicate attribute names to keep them unique per element
+        if attributes
+            .iter()
+            .any(|existing_attribute| existing_attribute.get_ns_name() == attribute.get_ns_name())
+        {
+            return Err(AnyError::msg(format!(
+                "Attribute '{}' already exists on this element",
+                attribute.get_ns_name()
+            )));
         }
         // Add the attribute to the attributes collection
-        self.attributes
-            .as_mut()
-            .context("Failed to insert value")?
-            .push(attribute);
+        attributes.push(attribute);
         Ok(())
     }
 
-    /// Clear all attribute of this element.
-    pub fn clear_attribute_mut(&mut self) -> Result<(), AnyError> {
-        self.attributes = None;
+    /// Replaces an existing attribute matching the given attribute's name.
+    ///
+    /// The attribute is matched by its namespaced name. If no attribute with the same
+    /// name exists, an error is returned.
+    ///
+    /// # Arguments
+    /// * `attribute` - The XML attribute that replaces the existing one with the same name.
+    ///
+    /// # Returns
+    /// * `Result<(), AnyError>` - An empty result if the attribute was replaced successfully,
+    ///   or an error if no attribute with the same name exists.
+    pub fn replace_attribute_mut(
+        &mut self,
+        attribute: XmlAttribute,
+    ) -> Result<(), AnyError> {
+        let attributes = self
+            .attributes
+            .as_mut()
+            .context("Element has no attributes to replace")?;
+        // Locate the existing attribute by its namespaced name
+        let existing_index = attributes
+            .iter()
+            .position(|existing_attribute| {
+                existing_attribute.get_ns_name() == attribute.get_ns_name()
+            })
+            .ok_or_else(|| {
+                AnyError::msg(format!(
+                    "Attribute '{}' does not exist on this element",
+                    attribute.get_ns_name()
+                ))
+            })?;
+        // Replace the matched attribute with the new one
+        attributes[existing_index] = attribute;
+        attributes
+            .get(existing_index)
+            .context("Failed to retrieve replaced attribute")?;
         Ok(())
+    }
+
+    /// Sets the initial attributes of this element from a vector.
+    ///
+    /// This is intended for initialising an element's attributes. If the element already
+    /// has one or more attributes, an error is returned.
+    ///
+    /// # Arguments
+    /// * `attributes` - The attributes to set on this element.
+    ///
+    /// # Returns
+    /// * `Result<(), AnyError>` - Ok on success, or an error if the element already
+    ///   has attributes.
+    pub fn set_attribute_mut(&mut self, attributes: Vec<XmlAttribute>) -> Result<(), AnyError> {
+        // Only allow setting when there are no existing attributes
+        if self.attributes.iter().flatten().next().is_some() {
+            return Err(AnyError::msg(
+                "Element already has attributes; cannot set initial attributes",
+            ));
+        }
+        self.attributes = Some(attributes);
+        Ok(())
+    }
+
+    /// Clear all attributes of this element.
+    ///
+    /// # Returns
+    /// * `Result<u32, AnyError>` - The number of attributes that were removed.
+    pub fn clear_attribute_mut(&mut self) -> Result<u32, AnyError> {
+        let removed_count = self.attributes.iter().flatten().count() as u32;
+        self.attributes = None;
+        Ok(removed_count)
     }
 
     /// Removes an attribute by its local name.
