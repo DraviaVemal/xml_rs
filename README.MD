@@ -42,7 +42,8 @@ commercial license, private releases, and priority support.
 ---
 
 ## 📖 Documentation
-- Working on setting up a central system for all my OSS contribution will update link in description once ready. Please refer to tests crate present in this repository to understand the methods
+
+- [Checkout package documentation](https://docs.draviavemal.com/xml_rs)
 
 ## 📦 Installation
 
