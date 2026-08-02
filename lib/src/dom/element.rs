@@ -7,7 +7,6 @@
 
 use crate::{utils::validation::is_valid_xml_name, NodeId, XmlAttribute, XmlNamespace};
 use anyhow::{Context, Error as AnyError, Result as AnyResult};
-use quick_xml::events::Event::Text;
 use std::{cell::RefCell, rc::Rc};
 
 /// Element tag name without namespace suppor
@@ -252,7 +251,7 @@ impl XmlElement {
     ///
     /// # Returns
     /// * `Option<&XmlAttribute>` - A reference to the attribute if found, or None.
-    pub fn get_attribute_keys(&self, name: &str) -> Option<&XmlAttribute> {
+    pub fn get_attribute(&self, name: &str) -> Option<&XmlAttribute> {
         if let Some(attributes) = self.attributes.as_ref() {
             attributes.iter().find(|item| item.get_name() == name)
         } else {
@@ -267,9 +266,43 @@ impl XmlElement {
     ///
     /// # Returns
     /// * `Option<&XmlAttribute>` - A reference to the attribute if found, or None.
-    pub fn get_attributes_ns_keys(&self, name_ns: &str) -> Option<&XmlAttribute> {
+    pub fn get_attributes_ns(&self, name_ns: &str) -> Option<&XmlAttribute> {
         if let Some(attributes) = self.attributes.as_ref() {
             attributes.iter().find(|item| item.get_ns_name() == name_ns)
+        } else {
+            None
+        }
+    }
+
+    /// Retrives all attribute keys without namespace
+    ///
+    /// # Returns
+    /// * `Option<Vec<String>>` - A reference to the attribute if found, or None.
+    pub fn get_attribute_keys(&self) -> Option<Vec<String>> {
+        if let Some(attributes) = self.attributes.as_ref() {
+            Some(
+                attributes
+                    .iter()
+                    .map(|item| item.get_name().to_string())
+                    .collect::<Vec<String>>(),
+            )
+        } else {
+            None
+        }
+    }
+
+    /// Retrives all attribute keys with namespace
+    ///
+    /// # Returns
+    /// * `Option<Vec<String>>` - A reference to the attribute if found, or None.
+    pub fn get_attribute_ns_keys(&self) -> Option<Vec<String>> {
+        if let Some(attributes) = self.attributes.as_ref() {
+            Some(
+                attributes
+                    .iter()
+                    .map(|item| item.get_ns_name().to_string())
+                    .collect::<Vec<String>>(),
+            )
         } else {
             None
         }
