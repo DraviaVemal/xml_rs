@@ -252,7 +252,7 @@ impl XmlElement {
     ///
     /// # Returns
     /// * `Option<&XmlAttribute>` - A reference to the attribute if found, or None.
-    pub fn get_attribute(&self, name: &str) -> Option<&XmlAttribute> {
+    pub fn get_attribute_keys(&self, name: &str) -> Option<&XmlAttribute> {
         if let Some(attributes) = self.attributes.as_ref() {
             attributes.iter().find(|item| item.get_name() == name)
         } else {
@@ -267,7 +267,7 @@ impl XmlElement {
     ///
     /// # Returns
     /// * `Option<&XmlAttribute>` - A reference to the attribute if found, or None.
-    pub fn get_attribute_ns(&self, name_ns: &str) -> Option<&XmlAttribute> {
+    pub fn get_attributes_ns_keys(&self, name_ns: &str) -> Option<&XmlAttribute> {
         if let Some(attributes) = self.attributes.as_ref() {
             attributes.iter().find(|item| item.get_ns_name() == name_ns)
         } else {
