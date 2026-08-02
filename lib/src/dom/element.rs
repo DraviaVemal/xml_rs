@@ -6,7 +6,8 @@
  */
 
 use crate::{utils::validation::is_valid_xml_name, NodeId, XmlAttribute, XmlNamespace};
-use anyhow::{Context, Error as AnyError};
+use anyhow::{Context, Error as AnyError, Result as AnyResult};
+use quick_xml::events::Event::Text;
 use std::{cell::RefCell, rc::Rc};
 
 /// Element tag name without namespace suppor
@@ -65,9 +66,9 @@ impl XmlElement {
     /// * `attribute` - The XML attribute to add to this element.
     ///
     /// # Returns
-    /// * `Result<(), AnyError>` - An empty result if the attribute was added successfully,
+    /// * `AnyResult<(), AnyError>` - An empty result if the attribute was added successfully,
     ///   or an error if an attribute with the same name already exists.
-    pub fn add_attribute_mut(&mut self, attribute: XmlAttribute) -> Result<(), AnyError> {
+    pub fn add_attribute_mut(&mut self, attribute: XmlAttribute) -> AnyResult<(), AnyError> {
         let attributes = self.attributes.get_or_insert_with(Vec::new);
         // Reject duplicate attribute names to keep them unique per element
         if attributes
@@ -94,8 +95,11 @@ impl XmlElement {
     /// * `attribute` - The XML attribute to add or replace.
     ///
     /// # Returns
-    /// * `Result<(), AnyError>` - Ok on success.
-    pub fn add_replace_attribute_mut(&mut self, attribute: XmlAttribute) -> Result<(), AnyError> {
+    /// * `AnyResult<(), AnyError>` - Ok on success.
+    pub fn add_replace_attribute_mut(
+        &mut self,
+        attribute: XmlAttribute,
+    ) -> AnyResult<(), AnyError> {
         let attributes = self.attributes.get_or_insert_with(Vec::new);
         // Locate the existing attribute by its namespaced name
         let existing_index = attributes.iter().position(|existing_attribute| {
@@ -119,9 +123,9 @@ impl XmlElement {
     /// * `attributes` - The attributes to set on this element.
     ///
     /// # Returns
-    /// * `Result<(), AnyError>` - Ok on success, or an error if the element already
+    /// * `AnyResult<(), AnyError>` - Ok on success, or an error if the element already
     ///   has attributes.
-    pub fn set_attribute_mut(&mut self, attributes: Vec<XmlAttribute>) -> Result<(), AnyError> {
+    pub fn set_attribute_mut(&mut self, attributes: Vec<XmlAttribute>) -> AnyResult<(), AnyError> {
         // Only allow setting when there are no existing attributes
         if self.attributes.iter().flatten().next().is_some() {
             return Err(AnyError::msg(
@@ -135,8 +139,8 @@ impl XmlElement {
     /// Clear all attributes of this element.
     ///
     /// # Returns
-    /// * `Result<u32, AnyError>` - The number of attributes that were removed.
-    pub fn clear_attribute_mut(&mut self) -> Result<u32, AnyError> {
+    /// * `AnyResult<u32, AnyError>` - The number of attributes that were removed.
+    pub fn clear_attribute_mut(&mut self) -> AnyResult<u32, AnyError> {
         let removed_count = self.attributes.iter().flatten().count() as u32;
         self.attributes = None;
         Ok(removed_count)
@@ -177,7 +181,7 @@ impl XmlElement {
     ///
     /// # Arguments
     /// * `text` - The text content to add.
-    pub fn add_text_mut(&mut self, text: &str) -> Result<(), AnyError> {
+    pub fn add_text_mut(&mut self, text: &str) -> AnyResult<(), AnyError> {
         self.add_child_content_mut(XmlElementContentType::Text(text.to_owned()))?;
         Ok(())
     }
@@ -192,10 +196,10 @@ impl XmlElement {
     /// * `comment` - The comment text to add (without the `<!--` and `-->` delimiters).
     ///
     /// # Returns
-    /// * `Result<&mut XmlElement, AnyError>` - A mutable reference to self for method chaining,
+    /// * `AnyResult<&mut XmlElement, AnyError>` - A mutable reference to self for method chaining,
     ///   or an error if adding the comment failed.
     ///
-    pub fn add_comments_mut(&mut self, comment: &str) -> Result<(), AnyError> {
+    pub fn add_comments_mut(&mut self, comment: &str) -> AnyResult<(), AnyError> {
         self.add_child_content_mut(XmlElementContentType::Comment(comment.to_owned()))?;
         Ok(())
     }
@@ -282,8 +286,8 @@ impl XmlElement {
     /// Gets the count of child elements.
     ///
     /// # Returns
-    /// * `Result<u32, AnyError>` - The count of child elements, or an error if the contents are not accessible.
-    pub fn get_child_element_count(&self) -> Result<u32, AnyError> {
+    /// * `AnyResult<u32, AnyError>` - The count of child elements, or an error if the contents are not accessible.
+    pub fn get_child_element_count(&self) -> AnyResult<u32, AnyError> {
         let count = self
             .child_contents
             .as_ref()
@@ -398,6 +402,24 @@ impl XmlElement {
             Some(childs)
         }
     }
+
+    /// Get the Text value of the element if exist else return none
+    ///
+    /// # Returns
+    /// * `AnyResult<Option<String>, AnyError>` - Result chain to read just string value of element
+    pub fn get_element_text_value(&self) -> AnyResult<Option<String>, AnyError> {
+        for content in self
+            .get_child_contents()
+            .as_ref()
+            .context("Failed to get content Childs")?
+        {
+            match content {
+                XmlElementContentType::Text(value) => return Ok(Some(value.clone())),
+                _ => {}
+            }
+        }
+        Ok(None)
+    }
 }
 
 impl XmlElement {
@@ -415,7 +437,7 @@ impl XmlElement {
         child_id: NodeId,
         tag: &str,
         tag_ns: &str,
-    ) -> Result<(), AnyError> {
+    ) -> AnyResult<(), AnyError> {
         // Ensure contents vector exists before adding a new child
         if self.child_contents.is_none() {
             self.child_contents = Some(Vec::new());
@@ -438,7 +460,7 @@ impl XmlElement {
         new_tag: &str,
         new_tag_ns: &str,
         after_tag: &str,
-    ) -> Result<(), AnyError> {
+    ) -> AnyResult<(), AnyError> {
         // Ensure contents vector exists before adding a new child
         if self.child_contents.is_none() {
             self.child_contents = Some(Vec::new());
@@ -497,7 +519,7 @@ impl XmlElement {
         new_tag: &str,
         new_tag_ns: &str,
         before_tag: &str,
-    ) -> Result<(), AnyError> {
+    ) -> AnyResult<(), AnyError> {
         // Ensure contents vector exists before adding a new child
         if self.child_contents.is_none() {
             self.child_contents = Some(Vec::new());
@@ -550,7 +572,7 @@ impl XmlElement {
         new_tag: &str,
         new_tag_ns: &str,
         after_tag_ns: &str,
-    ) -> Result<(), AnyError> {
+    ) -> AnyResult<(), AnyError> {
         // Ensure contents vector exists before adding a new child
         if self.child_contents.is_none() {
             self.child_contents = Some(Vec::new());
@@ -609,7 +631,7 @@ impl XmlElement {
         new_tag: &str,
         new_tag_ns: &str,
         before_tag_ns: &str,
-    ) -> Result<(), AnyError> {
+    ) -> AnyResult<(), AnyError> {
         // Ensure contents vector exists before adding a new child
         if self.child_contents.is_none() {
             self.child_contents = Some(Vec::new());
@@ -687,7 +709,7 @@ impl XmlElement {
     pub(crate) fn add_child_content_mut(
         &mut self,
         content_type: XmlElementContentType,
-    ) -> Result<(), AnyError> {
+    ) -> AnyResult<(), AnyError> {
         // Ensure contents vector exists before adding content
         if self.child_contents.is_none() {
             self.child_contents = Some(Vec::new());
@@ -803,12 +825,12 @@ impl XmlElement {
     /// * `namespace_context` - The namespace context for resolving prefixes.
     ///
     /// # Returns
-    /// * `Result<XmlElement, AnyError>` - A new element or an error if validation fails.
+    /// * `AnyResult<XmlElement, AnyError>` - A new element or an error if validation fails.
     pub(crate) fn new(
         tag: &str,
         attributes: Option<Vec<XmlAttribute>>,
         mut namespace_context: Rc<RefCell<XmlNamespace>>,
-    ) -> Result<XmlElement, AnyError> {
+    ) -> AnyResult<XmlElement, AnyError> {
         let mut ns_context_override = false;
 
         // Validate that the tag name follows XML naming rules
