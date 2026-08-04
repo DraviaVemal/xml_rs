@@ -888,4 +888,135 @@ mod xml_test {
             )
             .is_err())
     }
+
+    #[test]
+    fn test_xml_attribute_ns_name_and_keys() {
+        let xml_attribute = XmlAttribute::new("ns:attr".to_string(), "val".to_string());
+        assert_eq!(xml_attribute.get_name(), "attr");
+        assert_eq!(xml_attribute.get_ns_name(), "ns:attr");
+        assert_eq!(xml_attribute.get_value(), "val");
+
+        let mut document = XmlDocument::new();
+        let root_id = document.create_root_element_mut("root", None).unwrap();
+        let child_element_id = document
+            .append_child_element_mut(
+                root_id,
+                "child",
+                Some(vec![
+                    XmlAttribute::new("id".to_string(), "1".to_string()),
+                    XmlAttribute::new("xmlns:ns".to_string(), "http://example.org/ns".to_string()),
+                    XmlAttribute::new("ns:kind".to_string(), "special".to_string()),
+                ]),
+            )
+            .expect("append child");
+
+        let child_element = document.get_element(child_element_id).expect("get element");
+        let attribute_keys = child_element.get_attribute_keys().expect("keys");
+        assert!(attribute_keys.contains(&"id".to_string()));
+        let ns_attribute_keys = child_element.get_attribute_ns_keys().expect("ns keys");
+        assert!(ns_attribute_keys.contains(&"ns:kind".to_string()));
+    }
+
+    #[test]
+    fn test_element_attribute_mutations_and_counts() {
+        let mut document = XmlDocument::new();
+        let root_id = document.create_root_element_mut("root", None).unwrap();
+        let item_element_id = document
+            .append_child_element_mut(
+                root_id,
+                "item",
+                Some(vec![XmlAttribute::new("a".to_string(), "1".to_string())]),
+            )
+            .unwrap();
+
+        {
+            let element_mut = document.get_element_mut(item_element_id).unwrap();
+            element_mut
+                .add_replace_attribute_mut(XmlAttribute::new("a".to_string(), "2".to_string()))
+                .expect("replace attr");
+        }
+
+        let item_element = document.get_element(item_element_id).unwrap();
+        assert_eq!(item_element.get_attribute("a").unwrap().get_value(), "2");
+
+        {
+            let element_mut = document.get_element_mut(item_element_id).unwrap();
+            let res = element_mut.set_attribute_mut(vec![XmlAttribute::new("x".to_string(), "y".to_string())]);
+            assert!(res.is_err());
+        }
+
+        {
+            let element_mut = document.get_element_mut(item_element_id).unwrap();
+            let removed_count = element_mut.clear_attribute_mut().expect("clear attrs");
+            assert!(removed_count >= 1);
+            assert!(element_mut.get_attribute_keys().is_none());
+        }
+    }
+
+    #[test]
+    fn test_remove_attribute_ns_and_children_count_text() {
+        let mut document = XmlDocument::new();
+        let root_id = document.create_root_element_mut("root", None).unwrap();
+        let item_element_id = document
+            .append_child_element_mut(
+                root_id,
+                "item",
+                Some(vec![
+                    XmlAttribute::new("xmlns:ns".to_string(), "http://example.org/ns".to_string()),
+                    XmlAttribute::new("ns:tag".to_string(), "v".to_string()),
+                ]),
+            )
+            .unwrap();
+
+        {
+            let element_mut = document.get_element_mut(item_element_id).unwrap();
+            element_mut.remove_attribute_ns_mut("ns:tag");
+        }
+
+        let item_element = document.get_element(item_element_id).unwrap();
+        assert!(item_element.get_attribute_ns("ns:tag").is_none());
+
+        {
+            let element_mut = document.get_element_mut(item_element_id).unwrap();
+            element_mut.add_text_mut("hello").unwrap();
+            document
+                .append_child_element_mut(item_element_id, "dummy", None)
+                .expect("append child");
+        }
+
+        let item_element = document.get_element(item_element_id).unwrap();
+        let text_value = item_element.get_element_text_value().unwrap();
+        assert_eq!(text_value.unwrap(), "hello");
+        let child_count = item_element.get_child_element_count().unwrap();
+        assert!(child_count >= 1);
+    }
+
+    #[test]
+    fn test_clone_document_and_query_and_serialization_file_roundtrip() {
+        let mut document = XmlDocument::new();
+        let root_id = document.create_root_element_mut("root", None).unwrap();
+        let _ = document
+            .append_child_element_mut(
+                root_id,
+                "c",
+                Some(vec![XmlAttribute::new("k".to_string(), "v".to_string())]),
+            )
+            .unwrap();
+
+        let cloned_document = document.clone();
+        assert_eq!(cloned_document.get_root_id(), document.get_root_id());
+
+        let query_result = document.query_xpath("/root").unwrap();
+        assert!(query_result.is_none());
+
+        let mut tmp_file_path = std::env::temp_dir();
+        tmp_file_path.push("xml_rs_test_roundtrip.xml");
+        let tmp_file_path_str = tmp_file_path.to_str().unwrap().to_string();
+
+        XmlSerializer::xml_doc_tree_to_file(&mut document, &tmp_file_path_str).expect("write file");
+        let parsed_document = XmlDeserializer::file_to_xml_doc_tree(&tmp_file_path_str).expect("read file");
+        assert!(parsed_document.get_root_id() > 0);
+
+        let _ = std::fs::remove_file(&tmp_file_path_str);
+    }
 }
