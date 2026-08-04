@@ -60,6 +60,10 @@ impl XmlNamespace {
         // Add the mapping
         self.add_url_alias_mut(&ns_name, url);
     }
+
+    pub(crate) fn is_valid_ns_alias(&self, ns_alias: &str) -> bool {
+        self.alias_url.contains_key(ns_alias)
+    }
 }
 
 impl XmlNamespace {

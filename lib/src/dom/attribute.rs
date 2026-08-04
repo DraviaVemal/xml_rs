@@ -5,6 +5,10 @@
  * - Commercial use requires a separate license.
  */
 
+use std::{cell::RefCell, rc::Rc};
+
+use crate::XmlNamespace;
+
 /// Represents an XML attribute with optional namespace information.
 ///
 /// This struct stores the name, value, and optional namespace alias for an XML attribute.
@@ -17,6 +21,38 @@ pub struct XmlAttribute {
     value: String,
     /// Namespace alias/prefix for this attribute, if any
     ns_alias: Option<String>,
+}
+
+impl XmlAttribute {
+    // --------------------------
+    // pub constructor
+    // --------------------------
+
+    /// Constructs a new `XmlAttribute` from a name and value.
+    ///
+    /// # Arguments
+    /// * `name` - The attribute name, possibly namespaced (e.g., "ns:attr").
+    /// * `value` - The attribute value.
+    ///
+    /// # Returns
+    /// * `XmlAttribute` - The constructed attribute with parsed namespace information.
+    pub fn new(name: String, value: String) -> XmlAttribute {
+        // Split name into namespace alias and local name if ':' is present
+        let (ns_alias, name) = if let Some(pos) = name.find(':') {
+            // Extract the namespace prefix and the local name
+            let (ns, tag) = name.split_at(pos);
+            (Some(ns.to_string()), tag[1..].to_string())
+        } else {
+            // No namespace prefix
+            (None, name)
+        };
+
+        XmlAttribute {
+            name,
+            value,
+            ns_alias,
+        }
+    }
 }
 
 impl XmlAttribute {
@@ -50,36 +86,12 @@ impl XmlAttribute {
     pub fn get_value(&self) -> &str {
         &self.value
     }
-}
 
-impl XmlAttribute {
-    // --------------------------
-    // pub constructor
-    // --------------------------
-    
-    /// Constructs a new `XmlAttribute` from a name and value.
-    ///
-    /// # Arguments
-    /// * `name` - The attribute name, possibly namespaced (e.g., "ns:attr").
-    /// * `value` - The attribute value.
-    ///
-    /// # Returns
-    /// * `XmlAttribute` - The constructed attribute with parsed namespace information.
-    pub fn new(name: String, value: String) -> XmlAttribute {
-        // Split name into namespace alias and local name if ':' is present
-        let (ns_alias, name) = if let Some(pos) = name.find(':') {
-            // Extract the namespace prefix and the local name
-            let (ns, tag) = name.split_at(pos);
-            (Some(ns.to_string()), tag[1..].to_string())
+    pub(crate) fn is_valid_ns_alias(&self, namespace_context: Rc<RefCell<XmlNamespace>>) -> bool {
+        if let Some(ns) = self.ns_alias.as_ref() {
+            namespace_context.borrow().is_valid_ns_alias(ns)
         } else {
-            // No namespace prefix
-            (None, name)
-        };
-        
-        XmlAttribute {
-            name,
-            value,
-            ns_alias,
+            true
         }
     }
 }
