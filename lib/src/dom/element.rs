@@ -51,6 +51,7 @@ pub struct XmlElement {
     namespace_context: Rc<RefCell<XmlNamespace>>,
 }
 
+// Consumer Public mut API
 impl XmlElement {
     // --------------------------
     // pub mut self methods
@@ -69,6 +70,12 @@ impl XmlElement {
     ///   or an error if an attribute with the same name already exists.
     pub fn add_attribute_mut(&mut self, attribute: XmlAttribute) -> AnyResult<(), AnyError> {
         let attributes = self.attributes.get_or_insert_with(Vec::new);
+        // Validate ns alias if exist
+        if !attribute.is_valid_ns_alias(self.namespace_context.clone()) {
+            return Err(AnyError::msg(
+                "Namespace alias used without refering schema",
+            ));
+        }
         // Reject duplicate attribute names to keep them unique per element
         if attributes
             .iter()
@@ -100,6 +107,12 @@ impl XmlElement {
         attribute: XmlAttribute,
     ) -> AnyResult<(), AnyError> {
         let attributes = self.attributes.get_or_insert_with(Vec::new);
+        // Validate ns alias if exist
+        if !attribute.is_valid_ns_alias(self.namespace_context.clone()) {
+            return Err(AnyError::msg(
+                "Namespace alias used without refering schema",
+            ));
+        }
         // Locate the existing attribute by its namespaced name
         let existing_index = attributes.iter().position(|existing_attribute| {
             existing_attribute.get_ns_name() == attribute.get_ns_name()
@@ -126,9 +139,18 @@ impl XmlElement {
     ///   has attributes.
     pub fn set_attribute_mut(&mut self, attributes: Vec<XmlAttribute>) -> AnyResult<(), AnyError> {
         // Only allow setting when there are no existing attributes
-        if self.attributes.iter().flatten().next().is_some() {
+        if self.attributes.is_some() {
             return Err(AnyError::msg(
                 "Element already has attributes; cannot set initial attributes",
+            ));
+        }
+        // Validate attribute NS
+        if !attributes
+            .iter()
+            .all(|attribute| attribute.is_valid_ns_alias(self.namespace_context.clone()))
+        {
+            return Err(AnyError::msg(
+                "Namespace alias used without refering schema",
             ));
         }
         self.attributes = Some(attributes);
@@ -860,14 +882,14 @@ impl XmlElement {
     /// # Returns
     /// * `AnyResult<XmlElement, AnyError>` - A new element or an error if validation fails.
     pub(crate) fn new(
-        tag: &str,
+        new_tag: &str,
         attributes: Option<Vec<XmlAttribute>>,
         mut namespace_context: Rc<RefCell<XmlNamespace>>,
     ) -> AnyResult<XmlElement, AnyError> {
         let mut ns_context_override = false;
 
         // Validate that the tag name follows XML naming rules
-        if is_valid_xml_name(&tag) {
+        if is_valid_xml_name(&new_tag) {
             // Validate that all attribute names follow XML naming rules
             let filtered_attributes = if let Some(mut attributes) = attributes {
                 if !attributes
@@ -900,18 +922,43 @@ impl XmlElement {
                         namespace_context.borrow_mut().add_namespace_mut(namespace);
                     }
                 }
-                Some(attributes)
+                if attributes.len() == 0 {
+                    None
+                } else {
+                    Some(attributes)
+                }
             } else {
                 None
             };
 
             // Parse the tag for namespace prefix
-            let (ns_alias, tag) = if let Some(pos) = tag.find(':') {
-                let (ns, tag) = tag.split_at(pos);
+            let (ns_alias, tag) = if let Some(pos) = new_tag.find(':') {
+                let (ns, tag) = new_tag.split_at(pos);
+                // Validate namespace alias is declared
+                if !namespace_context
+                    .try_borrow()
+                    .context("Failed to fetch Namespace context")?
+                    .is_valid_ns_alias(ns)
+                {
+                    return Err(AnyError::msg(
+                        "Namespace alias used without refering schema",
+                    ));
+                }
                 (Some(ns.to_string()), &tag[1..])
             } else {
-                (None, tag)
+                (None, new_tag)
             };
+
+            // Validate attribute NS
+            if !filtered_attributes.as_ref().is_some_and(|attributes| {
+                attributes
+                    .iter()
+                    .all(|attribute| attribute.is_valid_ns_alias(namespace_context.clone()))
+            }) {
+                return Err(AnyError::msg(
+                    "Namespace alias used without refering schema",
+                ));
+            }
 
             // Create and return the new element
             Ok(XmlElement {

@@ -855,4 +855,37 @@ mod xml_test {
             );
         }
     }
+
+    #[test]
+    fn test_xml_no_alias_ns_tag() {
+        let mut doc = XmlDocument::new();
+        let root_id = doc
+            .create_root_element_mut("test", None)
+            .expect("Failed to create root element");
+        doc.append_child_element_mut(root_id, "newtag", None)
+            .expect("Failed to create child element");
+        assert!(doc
+            .append_child_element_mut(root_id, "a:invalidns", None)
+            .is_err())
+    }
+
+    #[test]
+    fn test_xml_no_alias_ns_attribute() {
+        let mut doc = XmlDocument::new();
+        let root_id = doc
+            .create_root_element_mut("test", None)
+            .expect("Failed to create root element");
+        doc.append_child_element_mut(root_id, "newtag", None)
+            .expect("Failed to create child element");
+        assert!(doc
+            .append_child_element_mut(
+                root_id,
+                "another",
+                Some(vec![XmlAttribute::new(
+                    "ns:invalid".to_string(),
+                    "value".to_string()
+                )])
+            )
+            .is_err())
+    }
 }
