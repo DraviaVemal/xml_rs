@@ -73,7 +73,7 @@ impl XmlElement {
         // Validate ns alias if exist
         if !attribute.is_valid_ns_alias(self.namespace_context.clone()) {
             return Err(AnyError::msg(
-                "Namespace alias used without refering schema",
+                "Add attribute namespace alias used without refering schema",
             ));
         }
         // Reject duplicate attribute names to keep them unique per element
@@ -110,7 +110,7 @@ impl XmlElement {
         // Validate ns alias if exist
         if !attribute.is_valid_ns_alias(self.namespace_context.clone()) {
             return Err(AnyError::msg(
-                "Namespace alias used without refering schema",
+                "Replace attribute namespace alias used without refering schema",
             ));
         }
         // Locate the existing attribute by its namespaced name
@@ -150,7 +150,7 @@ impl XmlElement {
             .all(|attribute| attribute.is_valid_ns_alias(self.namespace_context.clone()))
         {
             return Err(AnyError::msg(
-                "Namespace alias used without refering schema",
+                "Set attribute namespace alias used without refering schema",
             ));
         }
         self.attributes = Some(attributes);
@@ -941,7 +941,7 @@ impl XmlElement {
                     .is_valid_ns_alias(ns)
                 {
                     return Err(AnyError::msg(
-                        "Namespace alias used without refering schema",
+                        "Tag namespace alias used without refering schema",
                     ));
                 }
                 (Some(ns.to_string()), &tag[1..])
@@ -950,13 +950,15 @@ impl XmlElement {
             };
 
             // Validate attribute NS
-            if !filtered_attributes.as_ref().is_some_and(|attributes| {
-                attributes
+            if filtered_attributes.is_some()
+                && !filtered_attributes
+                    .as_ref()
+                    .context("Failed to read attribute")?
                     .iter()
                     .all(|attribute| attribute.is_valid_ns_alias(namespace_context.clone()))
-            }) {
+            {
                 return Err(AnyError::msg(
-                    "Namespace alias used without refering schema",
+                    "Attribute in new tag namespace alias used without refering schema",
                 ));
             }
 
