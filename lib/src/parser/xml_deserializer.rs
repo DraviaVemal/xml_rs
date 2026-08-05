@@ -33,7 +33,7 @@ impl XmlDeserializer {
     /// * `AnyResult<XmlDocument, AnyError>` - The parsed document or an error.
     pub fn file_to_xml_doc_tree(file_path: &str) -> AnyResult<XmlDocument, AnyError> {
         // Read the XML file into a byte vector
-        let xml_str = fs::read(file_path).context("Failed to read XML file")?;
+        let xml_str = fs::read(file_path).context("draviavemal-xml_rs::Failed to read XML file")?;
         // Delegate to the vector-based parser
         Self::vec_to_xml_doc_tree(xml_str)
     }
@@ -57,7 +57,7 @@ impl XmlDeserializer {
         log_elapsed!(
             || {
                 Self::xml_element_parser(&mut reader, &mut xml_document)
-                    .context("Xml Element Parser Failed")
+                    .context("draviavemal-xml_rs::Xml Element Parser Failed")
             },
             "Serializing"
         )?;
@@ -119,12 +119,12 @@ impl XmlDeserializer {
                         // Add as child element to current active element
                         xml_document
                             .append_child_element_mut(active_xml_element_id, &tag, Some(attributes))
-                            .context("Insert XML Child Failed.")?;
+                            .context("draviavemal-xml_rs::Insert XML Em pty Child Failed.")?;
                     } else {
                         // Set as root element
                         xml_document
                             .create_root_element_mut(&tag, Some(attributes))
-                            .context("Create XML Root Element Failed")?;
+                            .context("draviavemal-xml_rs::Create XML Root Element Failed")?;
                         root_loaded = true
                     }
                 }
@@ -139,12 +139,12 @@ impl XmlDeserializer {
                         // Add as child element to current active element and make it the new active element
                         active_xml_element_id = xml_document
                             .append_child_element_mut(active_xml_element_id, &tag, Some(attributes))
-                            .context("Insert XML Child Failed.")?;
+                            .context("draviavemal-xml_rs::Insert XML Child Failed.")?;
                     } else {
                         // Set as root element and make it the active element
                         active_xml_element_id = xml_document
                             .create_root_element_mut(&tag, Some(attributes))
-                            .context("Create XML Root Element Failed")?;
+                            .context("draviavemal-xml_rs::Create XML Root Element Failed")?;
                         root_loaded = true
                     }
                 }
@@ -154,13 +154,13 @@ impl XmlDeserializer {
                     // Unescape and add text to current active element
                     let text = byte_text
                         .unescape()
-                        .context("XML Text parsing error")?
+                        .context("draviavemal-xml_rs::XML Text parsing error")?
                         .to_string();
                     xml_document
                         .get_element_mut(active_xml_element_id)
-                        .context("Getting Target Element for text Failed")?
+                        .context("draviavemal-xml_rs::Getting Target Element for text Failed")?
                         .add_child_content_mut(XmlElementContentType::Text(text))
-                        .context("Failed to add text content")?;
+                        .context("draviavemal-xml_rs::Failed to add text content")?;
                 }
 
                 // Process comments
@@ -169,13 +169,13 @@ impl XmlDeserializer {
                     // Comments are preserved in the DOM and will be included during serialization
                     let comment = byte_comment
                         .unescape()
-                        .context("XML Comment parsing error")?
+                        .context("draviavemal-xml_rs::XML Comment parsing error")?
                         .to_string();
                     xml_document
                         .get_element_mut(active_xml_element_id)
-                        .context("Getting Target Element for comments Failed")?
+                        .context("draviavemal-xml_rs::Getting Target Element for comments Failed")?
                         .add_child_content_mut(XmlElementContentType::Comment(comment))
-                        .context("Failed to add comments")?;
+                        .context("draviavemal-xml_rs::Failed to add comments")?;
                 }
 
                 // Process end of element
@@ -184,7 +184,7 @@ impl XmlDeserializer {
                     let tag = String::from_utf8_lossy(element.name().into_inner()).to_string();
                     let element = xml_document
                         .get_element_mut(active_xml_element_id)
-                        .context("Invalid XML Tree Parsing Failed.")?;
+                        .context("draviavemal-xml_rs::Invalid XML Tree Parsing Failed.")?;
 
                     // Verify matching start and end tags
                     if element.get_tag_ns() == tag {
@@ -195,7 +195,7 @@ impl XmlDeserializer {
                     } else {
                         // Error if tags don't match
                         return Err(AnyError::msg(format!(
-                            "Invalid XML Tree Parsing Failed. Check {} != {}",
+                            "draviavemal-xml_rs::Invalid XML Tree Parsing Failed. Check {} != {}",
                             element.get_tag_ns(),
                             tag
                         )));
@@ -230,7 +230,8 @@ impl XmlDeserializer {
         element
             .html_attributes()
             .map(|attribute_result| {
-                let attribute = attribute_result.context("Failed to parse attribute")?;
+                let attribute =
+                    attribute_result.context("draviavemal-xml_rs::Failed to parse attribute")?;
                 // Extract name and value
                 let name = String::from_utf8_lossy(attribute.key.into_inner()).to_string();
                 let value = String::from_utf8_lossy(&attribute.value).to_string();
