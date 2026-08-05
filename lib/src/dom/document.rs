@@ -69,7 +69,7 @@ impl XmlDocument {
         // Create the element with a new namespace context
         let mut element =
             XmlElement::new(tag, attributes, Rc::new(RefCell::new(XmlNamespace::new())))
-                .context("Failed to create element")?;
+                .context("draviavemal-xml_rs::Failed to create element")?;
 
         // Set the element's ID
         element.set_id_mut(node_id);
@@ -100,9 +100,9 @@ impl XmlDocument {
 
         // Add the child to the parent's contents
         self.get_element_mut(parent_id)
-            .context("Parent element not found")?
+            .context("draviavemal-xml_rs::Parent element not found")?
             .add_child_mut(node_id, &tag, &tag_ns)
-            .context("Failed to add child element to parent")?;
+            .context("draviavemal-xml_rs::Failed to add child element to parent")?;
 
         Ok(node_id)
     }
@@ -134,9 +134,9 @@ impl XmlDocument {
 
         // Add the child to the parent's contents
         self.get_element_mut(parent_id)
-            .context("Parent element not found")?
+            .context("draviavemal-xml_rs::Parent element not found")?
             .add_child_after_tag_mut(node_id, &tag, &tag_ns, last_tag)
-            .context("Failed to add child element to parent")?;
+            .context("draviavemal-xml_rs::Failed to add child element to parent")?;
 
         Ok(node_id)
     }
@@ -167,9 +167,9 @@ impl XmlDocument {
 
         // Add the child to the parent's contents
         self.get_element_mut(parent_id)
-            .context("Parent element not found")?
+            .context("draviavemal-xml_rs::Parent element not found")?
             .add_child_before_tag_mut(node_id, &tag, &tag_ns, first_tag)
-            .context("Failed to add child element to parent")?;
+            .context("draviavemal-xml_rs::Failed to add child element to parent")?;
 
         Ok(node_id)
     }
@@ -199,9 +199,9 @@ impl XmlDocument {
 
         // Add the child to the parent's contents
         self.get_element_mut(parent_id)
-            .context("Parent element not found")?
+            .context("draviavemal-xml_rs::Parent element not found")?
             .add_child_after_tag_ns_mut(node_id, &tag, &tag_ns, last_tag_ns)
-            .context("Failed to add child element to parent")?;
+            .context("draviavemal-xml_rs::Failed to add child element to parent")?;
 
         Ok(node_id)
     }
@@ -231,9 +231,9 @@ impl XmlDocument {
 
         // Add the child to the parent's contents
         self.get_element_mut(parent_id)
-            .context("Parent element not found")?
+            .context("draviavemal-xml_rs::Parent element not found")?
             .add_child_before_tag_ns_mut(node_id, &tag, &tag_ns, first_tag_ns)
-            .context("Failed to add child element to parent")?;
+            .context("draviavemal-xml_rs::Failed to add child element to parent")?;
 
         Ok(node_id)
     }
@@ -251,7 +251,7 @@ impl XmlDocument {
     ) -> Result<&mut XmlElement, AnyError> {
         self.xml_element_collection
             .get_mut(&active_xml_element_id)
-            .context("Get Element mut not found")
+            .context("draviavemal-xml_rs::Get Element mut not found")
     }
 
     /// Clears the content of an element, removing all children.
@@ -267,7 +267,7 @@ impl XmlDocument {
 
         // Clear the element's content
         self.get_element_mut(element_id)
-            .context("Failed to get element")?
+            .context("draviavemal-xml_rs::Failed to get element")?
             .clear_content_mut();
 
         Ok(())
@@ -313,7 +313,7 @@ impl XmlDocument {
     pub fn get_element(&self, active_xml_element_id: NodeId) -> Result<&XmlElement, AnyError> {
         self.xml_element_collection
             .get(&active_xml_element_id)
-            .context("Get Element not found")
+            .context("draviavemal-xml_rs::Get Element not found")
     }
 
     /// Creates a clone of the document.
@@ -368,7 +368,7 @@ impl XmlDocument {
     ) -> Result<Option<NodeId>, AnyError> {
         Ok(self
             .get_element(parent_id)
-            .context("Failed to pull parent element")?
+            .context("draviavemal-xml_rs::Failed to pull parent element")?
             .find_first_child(tag))
     }
 
@@ -387,7 +387,7 @@ impl XmlDocument {
     ) -> Result<Option<NodeId>, AnyError> {
         Ok(self
             .get_element(parent_id)
-            .context("Failed to pull parent element")?
+            .context("draviavemal-xml_rs::Failed to pull parent element")?
             .find_first_child_ns(tag_ns))
     }
 
@@ -406,7 +406,7 @@ impl XmlDocument {
     ) -> Result<Option<Vec<NodeId>>, AnyError> {
         Ok(self
             .get_element(parent_id)
-            .context("Failed to pull parent element")?
+            .context("draviavemal-xml_rs::Failed to pull parent element")?
             .find_all_child(tag))
     }
 
@@ -425,7 +425,7 @@ impl XmlDocument {
     ) -> Result<Option<Vec<NodeId>>, AnyError> {
         Ok(self
             .get_element(parent_id)
-            .context("Failed to pull parent element")?
+            .context("draviavemal-xml_rs::Failed to pull parent element")?
             .find_all_child_ns(tag_ns))
     }
 
@@ -447,7 +447,7 @@ impl XmlDocument {
         // Check if the parent element has contents
         if let Some(contents) = self
             .get_element(parent_id)
-            .context("Failed to pull parent element")?
+            .context("draviavemal-xml_rs::Failed to pull parent element")?
             .get_child_contents()
         {
             // Iterate through each content item
@@ -456,7 +456,7 @@ impl XmlDocument {
                     // Check if the child element has the specified attribute with the specified value
                     if self
                         .get_element(*child_id)
-                        .context("Failed to pull child element")?
+                        .context("draviavemal-xml_rs::Failed to pull child element")?
                         .has_attribute(attr_name, attr_value)
                     {
                         return Ok(Some(child_id.clone()));
@@ -505,7 +505,7 @@ impl XmlDocument {
         // Check if the parent element has contents
         if let Some(contents) = self
             .get_element(parent_id)
-            .context("Failed to pull parent element")?
+            .context("draviavemal-xml_rs::Failed to pull parent element")?
             .get_child_contents()
         {
             // Iterate through each content item
@@ -514,7 +514,7 @@ impl XmlDocument {
                     // Check if the child element has the specified attribute with the specified value
                     if self
                         .get_element(*child_id)
-                        .context("Failed to pull child element")?
+                        .context("draviavemal-xml_rs::Failed to pull child element")?
                         .has_attribute(attr_name, attr_value)
                     {
                         result.push(*child_id);
@@ -551,7 +551,7 @@ impl XmlDocument {
         // Check if the parent element has contents
         if let Some(contents) = self
             .get_element(parent_id)
-            .context("Failed to pull parent element")?
+            .context("draviavemal-xml_rs::Failed to pull parent element")?
             .get_child_contents()
         {
             // Iterate through each content item
@@ -560,7 +560,7 @@ impl XmlDocument {
                     // Check if the child element has the specified attribute with the specified value
                     if self
                         .get_element(*child_id)
-                        .context("Failed to pull child element")?
+                        .context("draviavemal-xml_rs::Failed to pull child element")?
                         .has_attribute_ns(attr_name_ns, attr_value)
                     {
                         result.push(*child_id);
@@ -604,13 +604,13 @@ impl XmlDocument {
         // Get the parent ID of the element
         if let Some(parent_id) = self
             .get_element_mut(element_id)
-            .context("Failed to get element")?
+            .context("draviavemal-xml_rs::Failed to get element")?
             .get_parent_id()
         {
             // Remove the element from its parent's contents
             if let Some(parent) = self
                 .get_element_mut(parent_id)
-                .context("Failed to get parent element")?
+                .context("draviavemal-xml_rs::Failed to get parent element")?
                 .get_child_contents_mut()
             {
                 // Filter out the element from parent's contents
@@ -623,7 +623,7 @@ impl XmlDocument {
 
         // Remove all descendant elements recursively
         self.clear_element_subtree_mut(element_id)
-            .context("Failed to clean up child element tree")?;
+            .context("draviavemal-xml_rs::Failed to clean up child element tree")?;
 
         // Remove the element itself from the collection
         self.xml_element_collection.remove(&element_id);
@@ -671,7 +671,7 @@ impl XmlDocument {
         // Make a copy of the contents to avoid borrowing issues during iteration
         if let Some(contents) = self
             .get_element_mut(element_id)
-            .context("Failed to get element")?
+            .context("draviavemal-xml_rs::Failed to get element")?
             .get_child_contents()
             .clone()
         {
@@ -698,10 +698,10 @@ impl XmlDocument {
         let node_id = self.running_id;
         let ns_context = self
             .get_element(parent_id)
-            .context("Failed to pull parent element")?
+            .context("draviavemal-xml_rs::Failed to pull parent element")?
             .get_ns_context();
         let mut child_element = XmlElement::new(tag, attributes, ns_context)
-            .context("Failed to create child element")?;
+            .context("draviavemal-xml_rs::Failed to create child element")?;
         child_element.set_id_mut(node_id);
         child_element.set_parent_id_mut(parent_id);
         let tag = child_element.get_tag();

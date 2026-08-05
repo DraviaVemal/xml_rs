@@ -36,7 +36,7 @@ impl XmlSerializer {
         let xml_bytes = Self::xml_tree_to_vec(xml_document)?;
 
         // Write the bytes to the file
-        fs::write(file_path, xml_bytes).context("Failed to write XML file")?;
+        fs::write(file_path, xml_bytes).context("draviavemal-xml_rs::Failed to write XML file")?;
 
         Ok(())
     }
@@ -85,7 +85,7 @@ impl XmlSerializer {
         xml_content.push_str(
             log_elapsed!(
                 || {
-                    Self::build_xml_tree(xml_document).context("Create XML Contact String Failed")
+                    Self::build_xml_tree(xml_document).context("draviavemal-xml_rs::Create XML Contact String Failed")
                 },
                 format!("Deserialize File :")
             )?
@@ -120,7 +120,7 @@ impl XmlSerializer {
             let namespace_context = element.get_namespace_context();
             let namespace = namespace_context
                 .try_borrow()
-                .context("Failed to borrow namespace context")?;
+                .context("draviavemal-xml_rs::Failed to borrow namespace context")?;
             for (prefix, uri) in namespace.get_namespace_alias_url().iter() {
                 element_part.push_str(&format!(
                     " xmlns{}=\"{}\"",
@@ -165,7 +165,7 @@ impl XmlSerializer {
         // Get a copy of the element to work with
         let element = xml_document
             .get_element_mut(element_id)
-            .context("Failed to get element")?
+            .context("draviavemal-xml_rs::Failed to get element")?
             .clone_limited();
 
         // Check if the element has contents
@@ -179,7 +179,7 @@ impl XmlSerializer {
                     // Recursively process child elements
                     XmlElementContentType::Element((id, _, _)) => {
                         let element_content = Self::build_element_content(xml_document, *id)
-                            .context("Failed to build element content")?;
+                            .context("draviavemal-xml_rs::Failed to build element content")?;
                         content_part.push_str(&element_content);
                     }
                     // Escape and add text content
@@ -220,7 +220,7 @@ impl XmlSerializer {
 
         // Build the XML tree starting from the root
         let root_content = Self::build_element_content(xml_document, current_id)
-            .context("Failed to build root content tree")?;
+            .context("draviavemal-xml_rs::Failed to build root content tree")?;
 
         xml_part.push_str(&root_content);
 

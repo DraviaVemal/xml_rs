@@ -73,7 +73,7 @@ impl XmlElement {
         // Validate ns alias if exist
         if !attribute.is_valid_ns_alias(self.namespace_context.clone()) {
             return Err(AnyError::msg(
-                "Add attribute namespace alias used without refering schema",
+                "draviavemal-xml_rs::Add attribute namespace alias used without refering schema",
             ));
         }
         // Reject duplicate attribute names to keep them unique per element
@@ -82,7 +82,7 @@ impl XmlElement {
             .any(|existing_attribute| existing_attribute.get_ns_name() == attribute.get_ns_name())
         {
             return Err(AnyError::msg(format!(
-                "Attribute '{}' already exists on this element",
+                "draviavemal-xml_rs::Attribute '{}' already exists on this element",
                 attribute.get_ns_name()
             )));
         }
@@ -110,7 +110,7 @@ impl XmlElement {
         // Validate ns alias if exist
         if !attribute.is_valid_ns_alias(self.namespace_context.clone()) {
             return Err(AnyError::msg(
-                "Replace attribute namespace alias used without refering schema",
+                "draviavemal-xml_rs::Replace attribute namespace alias used without refering schema",
             ));
         }
         // Locate the existing attribute by its namespaced name
@@ -141,7 +141,7 @@ impl XmlElement {
         // Only allow setting when there are no existing attributes
         if self.attributes.is_some() {
             return Err(AnyError::msg(
-                "Element already has attributes; cannot set initial attributes",
+                "draviavemal-xml_rs::Element already has attributes; cannot set initial attributes",
             ));
         }
         // Validate attribute NS
@@ -150,7 +150,7 @@ impl XmlElement {
             .all(|attribute| attribute.is_valid_ns_alias(self.namespace_context.clone()))
         {
             return Err(AnyError::msg(
-                "Set attribute namespace alias used without refering schema",
+                "draviavemal-xml_rs::Set attribute namespace alias used without refering schema",
             ));
         }
         self.attributes = Some(attributes);
@@ -346,7 +346,7 @@ impl XmlElement {
         let count = self
             .child_contents
             .as_ref()
-            .context("Failed to open contents")?
+            .context("draviavemal-xml_rs::Failed to open contents")?
             .iter()
             .filter(|content| match content {
                 XmlElementContentType::Element(_) => true,
@@ -466,7 +466,7 @@ impl XmlElement {
         for content in self
             .get_child_contents()
             .as_ref()
-            .context("Failed to get content Childs")?
+            .context("draviavemal-xml_rs::Failed to get content Childs")?
         {
             match content {
                 XmlElementContentType::Text(value) => return Ok(Some(value.clone())),
@@ -500,7 +500,7 @@ impl XmlElement {
         // Add the child element to the contents collection
         self.child_contents
             .as_mut()
-            .context("Failed to insert child element")?
+            .context("draviavemal-xml_rs::Failed to insert child element")?
             .push(XmlElementContentType::Element((
                 child_id,
                 tag.to_owned(),
@@ -525,7 +525,7 @@ impl XmlElement {
         let child_collection = self
             .child_contents
             .as_mut()
-            .context("Failed to insert child element")?;
+            .context("draviavemal-xml_rs::Failed to insert child element")?;
         let last_id = child_collection
             .iter()
             .enumerate()
@@ -583,7 +583,7 @@ impl XmlElement {
         let child_collection = self
             .child_contents
             .as_mut()
-            .context("Failed to insert child element")?;
+            .context("draviavemal-xml_rs::Failed to insert child element")?;
         let first_id = child_collection
             .iter()
             .enumerate()
@@ -637,7 +637,7 @@ impl XmlElement {
         let child_collection = self
             .child_contents
             .as_mut()
-            .context("Failed to insert child element")?;
+            .context("draviavemal-xml_rs::Failed to insert child element")?;
         let last_id = child_collection
             .iter()
             .enumerate()
@@ -695,7 +695,7 @@ impl XmlElement {
         let child_collection = self
             .child_contents
             .as_mut()
-            .context("Failed to insert child element")?;
+            .context("draviavemal-xml_rs::Failed to insert child element")?;
         let first_id = child_collection
             .iter()
             .enumerate()
@@ -772,7 +772,7 @@ impl XmlElement {
         // Add the content to the contents collection
         self.child_contents
             .as_mut()
-            .context("Failed to insert content item")?
+            .context("draviavemal-xml_rs::Failed to insert content item")?
             .push(content_type);
         Ok(())
     }
@@ -896,7 +896,9 @@ impl XmlElement {
                     .iter()
                     .all(|attribute| is_valid_xml_name(&attribute.get_ns_name()))
                 {
-                    return Err(AnyError::msg("Not all attributes satisfy naming standards"));
+                    return Err(AnyError::msg(
+                        "draviavemal-xml_rs::Not all attributes satisfy naming standards",
+                    ));
                 }
 
                 // Process namespace declarations (xmlns attributes)
@@ -937,12 +939,14 @@ impl XmlElement {
                 // Validate namespace alias is declared
                 if !namespace_context
                     .try_borrow()
-                    .context("Failed to fetch Namespace context")?
+                    .context("draviavemal-xml_rs::Failed to fetch Namespace context")?
                     .is_valid_ns_alias(ns)
                 {
-                    return Err(AnyError::msg(
-                        "Tag namespace alias used without refering schema",
-                    ));
+                    return Err(AnyError::msg(format!(
+                        "draviavemal-xml_rs::Tag namespace alias used without refering schema {}:{}",
+                        ns,
+                        &tag[1..]
+                    )));
                 }
                 (Some(ns.to_string()), &tag[1..])
             } else {
@@ -953,12 +957,12 @@ impl XmlElement {
             if filtered_attributes.is_some()
                 && !filtered_attributes
                     .as_ref()
-                    .context("Failed to read attribute")?
+                    .context("draviavemal-xml_rs::Failed to read attribute")?
                     .iter()
                     .all(|attribute| attribute.is_valid_ns_alias(namespace_context.clone()))
             {
                 return Err(AnyError::msg(
-                    "Attribute in new tag namespace alias used without refering schema",
+                    "draviavemal-xml_rs::Attribute in new tag namespace alias used without refering schema",
                 ));
             }
 
@@ -974,7 +978,7 @@ impl XmlElement {
                 namespace_context,
             })
         } else {
-            Err(AnyError::msg("Invalid XML tag name"))
+            Err(AnyError::msg("draviavemal-xml_rs::draviavemal-xml_rs::Invalid XML tag name"))
         }
     }
 }
