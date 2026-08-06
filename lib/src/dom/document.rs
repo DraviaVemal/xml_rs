@@ -9,6 +9,7 @@ use crate::{
     NsTag, Tag, XPathHandler, XmlAttribute, XmlElement, XmlElementContentType, XmlNamespace,
 };
 use anyhow::{Context, Error as AnyError};
+use log::{debug, trace, warn};
 use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
 /// Type alias for node identifiers within an XML document.
@@ -77,6 +78,10 @@ impl XmlDocument {
         // Add the element to the collection
         self.add_element(node_id, element);
 
+        debug!(
+            "draviavemal-xml_rs::Created root element <{}> with node id {}",
+            tag, node_id
+        );
         Ok(node_id)
     }
 
@@ -104,6 +109,12 @@ impl XmlDocument {
             .add_child_mut(node_id, &tag, &tag_ns)
             .context("draviavemal-xml_rs::Failed to add child element to parent")?;
 
+        trace!(
+            "draviavemal-xml_rs::Appended child element <{}> (node {}) to parent node {}",
+            tag_ns,
+            node_id,
+            parent_id
+        );
         Ok(node_id)
     }
 
@@ -251,7 +262,13 @@ impl XmlDocument {
     ) -> Result<&mut XmlElement, AnyError> {
         self.xml_element_collection
             .get_mut(&active_xml_element_id)
-            .context("draviavemal-xml_rs::Get Element mut not found")
+            .with_context(|| {
+                warn!(
+                    "draviavemal-xml_rs::Mutable element lookup failed for node id {}",
+                    active_xml_element_id
+                );
+                "draviavemal-xml_rs::Get Element mut not found"
+            })
     }
 
     /// Clears the content of an element, removing all children.
@@ -262,6 +279,10 @@ impl XmlDocument {
     /// # Returns
     /// * `Result<(), AnyError>` - Success or an error.
     pub fn clear_element_content_mut(&mut self, element_id: NodeId) -> Result<(), AnyError> {
+        debug!(
+            "draviavemal-xml_rs::Clearing content of element node {}",
+            element_id
+        );
         // Remove all child elements from the document
         self.clear_element_subtree_mut(element_id)?;
 
@@ -313,7 +334,13 @@ impl XmlDocument {
     pub fn get_element(&self, active_xml_element_id: NodeId) -> Result<&XmlElement, AnyError> {
         self.xml_element_collection
             .get(&active_xml_element_id)
-            .context("draviavemal-xml_rs::Get Element not found")
+            .with_context(|| {
+                warn!(
+                    "draviavemal-xml_rs::Element lookup failed for node id {}",
+                    active_xml_element_id
+                );
+                "draviavemal-xml_rs::Get Element not found"
+            })
     }
 
     /// Creates a clone of the document.
@@ -601,6 +628,10 @@ impl XmlDocument {
     /// # Returns
     /// * `Result<(), AnyError>` - Success or an error.
     pub fn remove_element_mut(&mut self, element_id: NodeId) -> Result<(), AnyError> {
+        debug!(
+            "draviavemal-xml_rs::Removing element node {} and its subtree",
+            element_id
+        );
         // Get the parent ID of the element
         if let Some(parent_id) = self
             .get_element_mut(element_id)

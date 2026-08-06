@@ -6,6 +6,7 @@
  */
 
 use crate::XmlAttribute;
+use log::{debug, trace, warn};
 use std::collections::HashMap;
 
 /// Namespace alias key
@@ -39,9 +40,14 @@ impl XmlNamespace {
         // When alias is rebound to a new URL, remove the stale url→alias entry first
         if let Some(old_url) = self.alias_url.get(alias) {
             if old_url != url {
+                warn!(
+                    "draviavemal-xml_rs::Namespace alias '{}' rebound from '{}' to '{}'",
+                    alias, old_url, url
+                );
                 self.url_alias.remove(old_url.as_str());
             }
         }
+        trace!("draviavemal-xml_rs::Registered namespace alias '{}' -> '{}'", alias, url);
         self.alias_url.insert(alias.to_owned(), url.to_owned());
         self.url_alias.insert(url.to_owned(), alias.to_owned());
     }
@@ -61,6 +67,12 @@ impl XmlNamespace {
             .cloned()
             .unwrap_or_default();
         let url = ns_attribute.get_value();
+
+        if ns_name.is_empty() {
+            debug!("draviavemal-xml_rs::Registering default namespace -> '{}'", url);
+        } else {
+            debug!("draviavemal-xml_rs::Registering namespace '{}' -> '{}'", ns_name, url);
+        }
 
         // Add the mapping
         self.add_url_alias_mut(&ns_name, url);

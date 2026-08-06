@@ -7,6 +7,7 @@
 
 use crate::{log_elapsed, NodeId, XmlDocument, XmlElement, XmlElementContentType};
 use anyhow::{Context, Error as AnyError, Result as AnyResult};
+use log::{debug, error, info, trace};
 use quick_xml::escape::escape;
 use std::fs;
 
@@ -32,12 +33,17 @@ impl XmlSerializer {
         xml_document: &mut XmlDocument,
         file_path: &str,
     ) -> AnyResult<(), AnyError> {
+        info!("draviavemal-xml_rs::Serializing XML document to file: {}", file_path);
         // Convert the document to a byte vector
         let xml_bytes = Self::xml_tree_to_vec(xml_document)?;
 
         // Write the bytes to the file
-        fs::write(file_path, xml_bytes).context("draviavemal-xml_rs::Failed to write XML file")?;
+        fs::write(file_path, &xml_bytes).map_err(|e| {
+            error!("draviavemal-xml_rs::Failed to write XML file '{}': {}", file_path, e);
+            e
+        }).context("draviavemal-xml_rs::Failed to write XML file")?;
 
+        debug!("draviavemal-xml_rs::Wrote {} bytes to file '{}'", xml_bytes.len(), file_path);
         Ok(())
     }
 
@@ -49,6 +55,7 @@ impl XmlSerializer {
     /// # Returns
     /// * `AnyResult<Vec<u8>, AnyError>` - The serialized XML as bytes, or an error.
     pub fn xml_tree_to_vec(xml_document: &mut XmlDocument) -> AnyResult<Vec<u8>, AnyError> {
+        debug!("draviavemal-xml_rs::Building XML output string from document tree");
         let mut xml_content = String::default();
 
         // Add XML declaration with conditional behavior based on build mode
@@ -93,7 +100,9 @@ impl XmlSerializer {
         );
 
         // Convert the string to UTF-8 bytes
-        Ok(xml_content.as_bytes().to_vec())
+        let xml_bytes = xml_content.as_bytes().to_vec();
+        info!("draviavemal-xml_rs::XML document serialized to {} bytes", xml_bytes.len());
+        Ok(xml_bytes)
     }
 }
 
@@ -217,6 +226,7 @@ impl XmlSerializer {
 
         // Get the root element ID
         let current_id = xml_document.get_root_id();
+        trace!("draviavemal-xml_rs::Serializing XML tree starting from root node {}", current_id);
 
         // Build the XML tree starting from the root
         let root_content = Self::build_element_content(xml_document, current_id)

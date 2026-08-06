@@ -7,6 +7,7 @@
 
 use crate::{log_elapsed, NodeId, XmlAttribute, XmlDocument, XmlElementContentType};
 use anyhow::{Context, Error as AnyError, Result as AnyResult};
+use log::{debug, error, info, trace, warn};
 use quick_xml::{
     events::{BytesStart, Event},
     NsReader,
@@ -32,8 +33,13 @@ impl XmlDeserializer {
     /// # Returns
     /// * `AnyResult<XmlDocument, AnyError>` - The parsed document or an error.
     pub fn file_to_xml_doc_tree(file_path: &str) -> AnyResult<XmlDocument, AnyError> {
+        info!("draviavemal-xml_rs::Reading XML file from path: {}", file_path);
         // Read the XML file into a byte vector
-        let xml_str = fs::read(file_path).context("draviavemal-xml_rs::Failed to read XML file")?;
+        let xml_str = fs::read(file_path).map_err(|e| {
+            error!("draviavemal-xml_rs::Failed to read XML file '{}': {}", file_path, e);
+            e
+        }).context("draviavemal-xml_rs::Failed to read XML file")?;
+        debug!("draviavemal-xml_rs::Read {} bytes from file '{}'", xml_str.len(), file_path);
         // Delegate to the vector-based parser
         Self::vec_to_xml_doc_tree(xml_str)
     }
@@ -46,6 +52,7 @@ impl XmlDeserializer {
     /// # Returns
     /// * `AnyResult<XmlDocument, AnyError>` - The parsed document or an error.
     pub fn vec_to_xml_doc_tree(xml_str: Vec<u8>) -> AnyResult<XmlDocument, AnyError> {
+        debug!("draviavemal-xml_rs::Parsing XML document from {} bytes", xml_str.len());
         // Create a reader for the XML content
         let mut reader: NsReader<Cursor<Vec<u8>>> = NsReader::from_reader(Cursor::new(xml_str));
         let mut xml_document = XmlDocument::new();
@@ -62,6 +69,7 @@ impl XmlDeserializer {
             "Serializing"
         )?;
 
+        info!("draviavemal-xml_rs::XML document parsed successfully");
         Ok(xml_document)
     }
 }
@@ -90,7 +98,14 @@ impl XmlDeserializer {
         // Process XML events until EOF or error
         loop {
             match reader.read_event_into(&mut temp_buffer) {
-                Err(e) => return Err(e.into()),
+                Err(e) => {
+                    error!(
+                        "draviavemal-xml_rs::XML parse error at byte position {}: {}",
+                        reader.buffer_position(),
+                        e
+                    );
+                    return Err(e.into());
+                }
 
                 // Process XML declaration
                 Ok(Event::Decl(declaration)) => {
@@ -99,13 +114,17 @@ impl XmlDeserializer {
                         .version()
                         .map(|char| String::from_utf8_lossy(&char).to_string())
                         .unwrap_or_default();
-                    xml_document.set_version_mut(version);
 
                     // Extract and set encoding information, defaulting to utf-8
                     let encoding = match declaration.encoding() {
                         Some(Ok(enc)) => String::from_utf8_lossy(&enc).to_string(),
                         _ => "utf-8".to_string(),
                     };
+                    debug!(
+                        "draviavemal-xml_rs::XML declaration parsed: version='{}', encoding='{}'",
+                        version, encoding
+                    );
+                    xml_document.set_version_mut(version);
                     xml_document.set_encoding_mut(encoding);
                 }
 
@@ -116,11 +135,13 @@ impl XmlDeserializer {
                     let attributes = Self::get_attributes_string(element)?;
 
                     if root_loaded {
+                        trace!("draviavemal-xml_rs::Parsing empty element <{}/> under node {}", tag, active_xml_element_id);
                         // Add as child element to current active element
                         xml_document
                             .append_child_element_mut(active_xml_element_id, &tag, Some(attributes))
                             .context("draviavemal-xml_rs::Insert XML Em pty Child Failed.")?;
                     } else {
+                        debug!("draviavemal-xml_rs::Parsing root element <{}/> (empty)", tag);
                         // Set as root element
                         xml_document
                             .create_root_element_mut(&tag, Some(attributes))
@@ -136,11 +157,13 @@ impl XmlDeserializer {
                     let attributes = Self::get_attributes_string(element)?;
 
                     if root_loaded {
+                        trace!("draviavemal-xml_rs::Parsing start element <{}> under node {}", tag, active_xml_element_id);
                         // Add as child element to current active element and make it the new active element
                         active_xml_element_id = xml_document
                             .append_child_element_mut(active_xml_element_id, &tag, Some(attributes))
                             .context("draviavemal-xml_rs::Insert XML Child Failed.")?;
                     } else {
+                        debug!("draviavemal-xml_rs::Parsing root element <{}>", tag);
                         // Set as root element and make it the active element
                         active_xml_element_id = xml_document
                             .create_root_element_mut(&tag, Some(attributes))
@@ -188,12 +211,19 @@ impl XmlDeserializer {
 
                     // Verify matching start and end tags
                     if element.get_tag_ns() == tag {
+                        trace!("draviavemal-xml_rs::Closing element </{}> (node {})", tag, active_xml_element_id);
                         // Move back up to parent element
                         if let Some(parent_id) = element.get_parent_id() {
                             active_xml_element_id = parent_id;
                         }
                     } else {
                         // Error if tags don't match
+                        error!(
+                            "draviavemal-xml_rs::Malformed XML: mismatched closing tag, expected </{}> but found </{}> at node {}",
+                            element.get_tag_ns(),
+                            tag,
+                            active_xml_element_id
+                        );
                         return Err(AnyError::msg(format!(
                             "draviavemal-xml_rs::Invalid XML Tree Parsing Failed. Check {} != {}",
                             element.get_tag_ns(),
@@ -204,6 +234,10 @@ impl XmlDeserializer {
 
                 // End of file reached
                 Ok(Event::Eof) => {
+                    if !root_loaded {
+                        warn!("draviavemal-xml_rs::Reached end of XML input without encountering a root element");
+                    }
+                    debug!("draviavemal-xml_rs::Reached end of XML input");
                     break;
                 }
 
@@ -235,6 +269,7 @@ impl XmlDeserializer {
                 // Extract name and value
                 let name = String::from_utf8_lossy(attribute.key.into_inner()).to_string();
                 let value = String::from_utf8_lossy(&attribute.value).to_string();
+                trace!("draviavemal-xml_rs::Parsed attribute {}=\"{}\"", name, value);
                 // Create the XmlAttribute
                 Ok(XmlAttribute::new(name, value))
             })
