@@ -1019,4 +1019,99 @@ mod xml_test {
 
         let _ = std::fs::remove_file(&tmp_file_path_str);
     }
+
+    // --- URI-based namespace lookup tests ---
+
+    #[test]
+    fn get_attribute_by_uri_standard_alias() {
+        // r:embed with xmlns:r on the same element — canonical OOXML blip pattern
+        let xml = r#"<root><a:blip xmlns:a="http://drawingml" xmlns:r="http://relationships" r:embed="rId5"/></root>"#;
+        let doc = XmlDeserializer::vec_to_xml_doc_tree(xml.as_bytes().to_vec())
+            .expect("parse failed");
+        let root_id = doc.get_root_id();
+        let blip_id = doc
+            .get_element(root_id)
+            .unwrap()
+            .find_first_child_ns("a:blip")
+            .expect("blip not found");
+        let blip = doc.get_element(blip_id).unwrap();
+        let attr = blip
+            .get_attribute_by_uri("http://relationships", "embed")
+            .expect("should find r:embed by URI");
+        assert_eq!(attr.get_value(), "rId5");
+    }
+
+    #[test]
+    fn get_attribute_by_uri_non_standard_alias() {
+        // Same semantics, but the file uses rel: instead of r:
+        let xml = r#"<root><a:blip xmlns:a="http://drawingml" xmlns:rel="http://relationships" rel:embed="rId7"/></root>"#;
+        let doc = XmlDeserializer::vec_to_xml_doc_tree(xml.as_bytes().to_vec())
+            .expect("parse failed");
+        let root_id = doc.get_root_id();
+        let blip_id = doc
+            .get_element(root_id)
+            .unwrap()
+            .find_first_child_ns("a:blip")
+            .expect("blip not found");
+        let blip = doc.get_element(blip_id).unwrap();
+        let attr = blip
+            .get_attribute_by_uri("http://relationships", "embed")
+            .expect("should find rel:embed by URI regardless of alias");
+        assert_eq!(attr.get_value(), "rId7");
+    }
+
+    #[test]
+    fn get_attribute_by_uri_inherited_alias() {
+        // xmlns:r declared on parent; child uses r:embed without re-declaring it
+        let xml = r#"<root xmlns:r="http://relationships"><child r:id="rId3"/></root>"#;
+        let doc = XmlDeserializer::vec_to_xml_doc_tree(xml.as_bytes().to_vec())
+            .expect("parse failed — namespace inheritance broken");
+        let root_id = doc.get_root_id();
+        let child_id = doc
+            .get_element(root_id)
+            .unwrap()
+            .find_first_child("child")
+            .expect("child not found");
+        let child = doc.get_element(child_id).unwrap();
+        let attr = child
+            .get_attribute_by_uri("http://relationships", "id")
+            .expect("should find r:id via inherited namespace");
+        assert_eq!(attr.get_value(), "rId3");
+    }
+
+    #[test]
+    fn get_attribute_by_uri_inherited_after_sibling_override() {
+        // Child B declares xmlns:a but should still inherit xmlns:r from parent
+        let xml = r#"<root xmlns:r="http://relationships"><blip xmlns:a="http://drawingml" r:embed="rId9"/></root>"#;
+        let doc = XmlDeserializer::vec_to_xml_doc_tree(xml.as_bytes().to_vec())
+            .expect("parse failed — inheritance broken after sibling override");
+        let root_id = doc.get_root_id();
+        let blip_id = doc
+            .get_element(root_id)
+            .unwrap()
+            .find_first_child("blip")
+            .expect("blip not found");
+        let blip = doc.get_element(blip_id).unwrap();
+        let attr = blip
+            .get_attribute_by_uri("http://relationships", "embed")
+            .expect("should find r:embed after inheriting r from parent");
+        assert_eq!(attr.get_value(), "rId9");
+    }
+
+    #[test]
+    fn get_alias_for_uri_returns_in_scope_alias() {
+        let xml = r#"<root xmlns:r="http://relationships"><child r:id="rId1"/></root>"#;
+        let doc = XmlDeserializer::vec_to_xml_doc_tree(xml.as_bytes().to_vec()).unwrap();
+        let root_id = doc.get_root_id();
+        let child_id = doc
+            .get_element(root_id)
+            .unwrap()
+            .find_first_child("child")
+            .unwrap();
+        let child = doc.get_element(child_id).unwrap();
+        let alias = child
+            .get_alias_for_uri("http://relationships")
+            .expect("alias should be in scope via inheritance");
+        assert_eq!(alias, "r");
+    }
 }

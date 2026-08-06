@@ -296,6 +296,27 @@ impl XmlElement {
         }
     }
 
+    /// Retrieves an attribute by its namespace URI and local name.
+    ///
+    /// Resolves each prefixed attribute's alias against the element's namespace context
+    /// and compares the resolved URI, making this alias-independent.
+    pub fn get_attribute_by_uri(&self, uri: &str, local_name: &str) -> Option<&XmlAttribute> {
+        let ctx = self.namespace_context.borrow();
+        self.attributes.as_ref()?.iter().find(|attr| {
+            attr.get_name() == local_name
+                && attr
+                    .get_ns_alias()
+                    .and_then(|alias| ctx._get_url(alias))
+                    .map(|resolved| resolved == uri)
+                    .unwrap_or(false)
+        })
+    }
+
+    /// Returns the namespace alias currently in scope for the given URI, if any.
+    pub fn get_alias_for_uri(&self, uri: &str) -> Option<String> {
+        self.namespace_context.borrow()._get_alias(uri).cloned()
+    }
+
     /// Retrives all attribute keys without namespace
     ///
     /// # Returns
@@ -914,10 +935,11 @@ impl XmlElement {
                     }
                 });
 
-                // If namespace declarations found, create a new namespace context
+                // If namespace declarations found, inherit parent scope then layer new declarations on top
                 if !namespaces.is_empty() {
                     ns_context_override = true;
-                    namespace_context = Rc::new(RefCell::new(XmlNamespace::new()));
+                    let inherited = (*namespace_context.borrow()).clone();
+                    namespace_context = Rc::new(RefCell::new(inherited));
 
                     // Add each namespace declaration to the context
                     for namespace in namespaces {
