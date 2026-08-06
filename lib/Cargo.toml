@@ -16,3 +16,4 @@ authors = ["Dravia Vemal <contact@draviavemal.com>"]
 anyhow.workspace = true
 quick-xml.workspace = true
 chrono.workspace = true
+log.workspace = true

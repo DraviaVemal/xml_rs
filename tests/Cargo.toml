@@ -12,6 +12,7 @@ authors = ["Dravia Vemal <contact@draviavemal.com>"]
 anyhow.workspace = true
 quick-xml.workspace = true
 draviavemal-xml_rs.workspace = true
+env_logger.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true

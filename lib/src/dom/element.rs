@@ -7,6 +7,7 @@
 
 use crate::{utils::validation::is_valid_xml_name, NodeId, XmlAttribute, XmlNamespace};
 use anyhow::{Context, Error as AnyError, Result as AnyResult};
+use log::{debug, trace, warn};
 use std::{cell::RefCell, rc::Rc};
 
 /// Element tag name without namespace suppor
@@ -72,6 +73,10 @@ impl XmlElement {
         let attributes = self.attributes.get_or_insert_with(Vec::new);
         // Validate ns alias if exist
         if !attribute.is_valid_ns_alias(self.namespace_context.clone()) {
+            warn!(
+                "draviavemal-xml_rs::Rejected attribute '{}': namespace alias not declared in scope",
+                attribute.get_ns_name()
+            );
             return Err(AnyError::msg(
                 "draviavemal-xml_rs::Add attribute namespace alias used without refering schema",
             ));
@@ -81,12 +86,22 @@ impl XmlElement {
             .iter()
             .any(|existing_attribute| existing_attribute.get_ns_name() == attribute.get_ns_name())
         {
+            warn!(
+                "draviavemal-xml_rs::Rejected duplicate attribute '{}' on element node {}",
+                attribute.get_ns_name(),
+                self.id
+            );
             return Err(AnyError::msg(format!(
                 "draviavemal-xml_rs::Attribute '{}' already exists on this element",
                 attribute.get_ns_name()
             )));
         }
         // Add the attribute to the attributes collection
+        trace!(
+            "draviavemal-xml_rs::Added attribute '{}' to element node {}",
+            attribute.get_ns_name(),
+            self.id
+        );
         attributes.push(attribute);
         Ok(())
     }
@@ -109,6 +124,10 @@ impl XmlElement {
         let attributes = self.attributes.get_or_insert_with(Vec::new);
         // Validate ns alias if exist
         if !attribute.is_valid_ns_alias(self.namespace_context.clone()) {
+            warn!(
+                "draviavemal-xml_rs::Rejected replace of attribute '{}': namespace alias not declared in scope",
+                attribute.get_ns_name()
+            );
             return Err(AnyError::msg(
                 "draviavemal-xml_rs::Replace attribute namespace alias used without refering schema",
             ));
@@ -119,9 +138,23 @@ impl XmlElement {
         });
         match existing_index {
             // Replace in-place at the existing position
-            Some(index) => attributes[index] = attribute,
+            Some(index) => {
+                trace!(
+                    "draviavemal-xml_rs::Replaced attribute '{}' on element node {}",
+                    attribute.get_ns_name(),
+                    self.id
+                );
+                attributes[index] = attribute;
+            }
             // Otherwise append to the end
-            None => attributes.push(attribute),
+            None => {
+                trace!(
+                    "draviavemal-xml_rs::Added attribute '{}' to element node {}",
+                    attribute.get_ns_name(),
+                    self.id
+                );
+                attributes.push(attribute);
+            }
         }
         Ok(())
     }
@@ -140,6 +173,10 @@ impl XmlElement {
     pub fn set_attribute_mut(&mut self, attributes: Vec<XmlAttribute>) -> AnyResult<(), AnyError> {
         // Only allow setting when there are no existing attributes
         if self.attributes.is_some() {
+            warn!(
+                "draviavemal-xml_rs::Rejected set_attribute on element node {}: attributes already present",
+                self.id
+            );
             return Err(AnyError::msg(
                 "draviavemal-xml_rs::Element already has attributes; cannot set initial attributes",
             ));
@@ -149,6 +186,10 @@ impl XmlElement {
             .iter()
             .all(|attribute| attribute.is_valid_ns_alias(self.namespace_context.clone()))
         {
+            warn!(
+                "draviavemal-xml_rs::Rejected set_attribute on element node {}: an attribute uses an undeclared namespace alias",
+                self.id
+            );
             return Err(AnyError::msg(
                 "draviavemal-xml_rs::Set attribute namespace alias used without refering schema",
             ));
@@ -917,6 +958,7 @@ impl XmlElement {
                     .iter()
                     .all(|attribute| is_valid_xml_name(&attribute.get_ns_name()))
                 {
+                    warn!("draviavemal-xml_rs::Rejected element <{}>: one or more attribute names are invalid XML names", new_tag);
                     return Err(AnyError::msg(
                         "draviavemal-xml_rs::Not all attributes satisfy naming standards",
                     ));
@@ -938,6 +980,11 @@ impl XmlElement {
                 // If namespace declarations found, inherit parent scope then layer new declarations on top
                 if !namespaces.is_empty() {
                     ns_context_override = true;
+                    debug!(
+                        "draviavemal-xml_rs::Element <{}> declares {} namespace(s); creating overriding namespace scope",
+                        new_tag,
+                        namespaces.len()
+                    );
                     let inherited = (*namespace_context.borrow()).clone();
                     namespace_context = Rc::new(RefCell::new(inherited));
 
@@ -964,6 +1011,10 @@ impl XmlElement {
                     .context("draviavemal-xml_rs::Failed to fetch Namespace context")?
                     .is_valid_ns_alias(ns)
                 {
+                    warn!(
+                        "draviavemal-xml_rs::Rejected element <{}:{}>: namespace alias '{}' used without a referring schema",
+                        ns, &tag[1..], ns
+                    );
                     return Err(AnyError::msg(format!(
                         "draviavemal-xml_rs::Tag namespace alias used without refering schema {}:{}",
                         ns,
@@ -983,6 +1034,7 @@ impl XmlElement {
                     .iter()
                     .all(|attribute| attribute.is_valid_ns_alias(namespace_context.clone()))
             {
+                warn!("draviavemal-xml_rs::Rejected element <{}>: an attribute uses an undeclared namespace alias", new_tag);
                 return Err(AnyError::msg(
                     "draviavemal-xml_rs::Attribute in new tag namespace alias used without refering schema",
                 ));
@@ -1000,7 +1052,13 @@ impl XmlElement {
                 namespace_context,
             })
         } else {
-            Err(AnyError::msg("draviavemal-xml_rs::draviavemal-xml_rs::Invalid XML tag name"))
+            warn!(
+                "draviavemal-xml_rs::Rejected element: '{}' is not a valid XML tag name",
+                new_tag
+            );
+            Err(AnyError::msg(
+                "draviavemal-xml_rs::draviavemal-xml_rs::Invalid XML tag name",
+            ))
         }
     }
 }
