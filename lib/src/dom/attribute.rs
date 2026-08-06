@@ -87,6 +87,11 @@ impl XmlAttribute {
         &self.value
     }
 
+    /// Returns the namespace alias/prefix of the attribute, if any.
+    pub fn get_ns_alias(&self) -> Option<&str> {
+        self.ns_alias.as_deref()
+    }
+
     pub(crate) fn is_valid_ns_alias(&self, namespace_context: Rc<RefCell<XmlNamespace>>) -> bool {
         if let Some(ns) = self.ns_alias.as_ref() {
             namespace_context.borrow().is_valid_ns_alias(ns)

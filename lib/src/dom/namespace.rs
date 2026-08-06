@@ -17,7 +17,7 @@ pub type NsUrl = String;
 ///
 /// This struct provides bidirectional mapping between namespace prefixes and their
 /// corresponding URLs, allowing for efficient lookups in both directions.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct XmlNamespace {
     /// Maps from namespace alias to URL
     url_alias: HashMap<NsUrl, NsAlias>,
@@ -36,7 +36,12 @@ impl XmlNamespace {
     /// * `alias` - The namespace alias (prefix).
     /// * `url` - The namespace URI.
     pub(crate) fn add_url_alias_mut(&mut self, alias: &str, url: &str) {
-        // Insert both directions for bidirectional lookup capability
+        // When alias is rebound to a new URL, remove the stale url→alias entry first
+        if let Some(old_url) = self.alias_url.get(alias) {
+            if old_url != url {
+                self.url_alias.remove(old_url.as_str());
+            }
+        }
         self.alias_url.insert(alias.to_owned(), url.to_owned());
         self.url_alias.insert(url.to_owned(), alias.to_owned());
     }
