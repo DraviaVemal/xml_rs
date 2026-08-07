@@ -102,7 +102,13 @@ impl XmlElement {
             attribute.get_ns_name(),
             self.id
         );
+        let attribute_alias = attribute.get_ns_alias().map(str::to_string);
         attributes.push(attribute);
+        if let Some(alias) = attribute_alias {
+            self.namespace_context
+                .borrow_mut()
+                .increment_alias_use_mut(&alias);
+        }
         Ok(())
     }
 
@@ -144,7 +150,16 @@ impl XmlElement {
                     attribute.get_ns_name(),
                     self.id
                 );
+                let previous_alias = attributes[index].get_ns_alias().map(str::to_string);
+                let replacement_alias = attribute.get_ns_alias().map(str::to_string);
                 attributes[index] = attribute;
+                let mut namespace_context = self.namespace_context.borrow_mut();
+                if let Some(alias) = previous_alias {
+                    namespace_context.decrement_alias_use_mut(&alias);
+                }
+                if let Some(alias) = replacement_alias {
+                    namespace_context.increment_alias_use_mut(&alias);
+                }
             }
             // Otherwise append to the end
             None => {
@@ -153,7 +168,13 @@ impl XmlElement {
                     attribute.get_ns_name(),
                     self.id
                 );
+                let attribute_alias = attribute.get_ns_alias().map(str::to_string);
                 attributes.push(attribute);
+                if let Some(alias) = attribute_alias {
+                    self.namespace_context
+                        .borrow_mut()
+                        .increment_alias_use_mut(&alias);
+                }
             }
         }
         Ok(())
@@ -194,6 +215,14 @@ impl XmlElement {
                 "draviavemal-xml_rs::Set attribute namespace alias used without refering schema",
             ));
         }
+        {
+            let mut namespace_context = self.namespace_context.borrow_mut();
+            for attribute in &attributes {
+                if let Some(alias) = attribute.get_ns_alias() {
+                    namespace_context.increment_alias_use_mut(alias);
+                }
+            }
+        }
         self.attributes = Some(attributes);
         Ok(())
     }
@@ -204,6 +233,14 @@ impl XmlElement {
     /// * `AnyResult<u32, AnyError>` - The number of attributes that were removed.
     pub fn clear_attribute_mut(&mut self) -> AnyResult<u32, AnyError> {
         let removed_count = self.attributes.iter().flatten().count() as u32;
+        if let Some(attributes) = &self.attributes {
+            let mut namespace_context = self.namespace_context.borrow_mut();
+            for attribute in attributes {
+                if let Some(alias) = attribute.get_ns_alias() {
+                    namespace_context.decrement_alias_use_mut(alias);
+                }
+            }
+        }
         self.attributes = None;
         Ok(removed_count)
     }
@@ -215,8 +252,16 @@ impl XmlElement {
     /// * `name` - The local name of the attribute to remove.
     pub fn remove_attribute_mut(&mut self, name: &str) {
         if let Some(attributes) = &mut self.attributes {
-            // Filter out the attribute with the matching name
-            attributes.retain(|a| a.get_name() != name);
+            let removed_aliases: Vec<String> = attributes
+                .iter()
+                .filter(|attribute| attribute.get_name() == name)
+                .filter_map(|attribute| attribute.get_ns_alias().map(str::to_string))
+                .collect();
+            attributes.retain(|attribute| attribute.get_name() != name);
+            let mut namespace_context = self.namespace_context.borrow_mut();
+            for alias in removed_aliases {
+                namespace_context.decrement_alias_use_mut(&alias);
+            }
         }
     }
 
@@ -226,8 +271,16 @@ impl XmlElement {
     /// * `ns_name` - The namespaced name of the attribute to remove (e.g., "ns:attr").
     pub fn remove_attribute_ns_mut(&mut self, ns_name: &str) {
         if let Some(attributes) = &mut self.attributes {
-            // Filter out the attribute with the matching namespaced name
-            attributes.retain(|a| !(a.get_ns_name() == ns_name));
+            let removed_aliases: Vec<String> = attributes
+                .iter()
+                .filter(|attribute| attribute.get_ns_name() == ns_name)
+                .filter_map(|attribute| attribute.get_ns_alias().map(str::to_string))
+                .collect();
+            attributes.retain(|attribute| attribute.get_ns_name() != ns_name);
+            let mut namespace_context = self.namespace_context.borrow_mut();
+            for alias in removed_aliases {
+                namespace_context.decrement_alias_use_mut(&alias);
+            }
         }
     }
 
@@ -348,7 +401,7 @@ impl XmlElement {
                 && attr
                     .get_ns_alias()
                     .and_then(|alias| ctx._get_url(alias))
-                    .map(|resolved| resolved == uri)
+                    .map(|(resolved, _)| resolved == uri)
                     .unwrap_or(false)
         })
     }
@@ -927,6 +980,22 @@ impl XmlElement {
     pub(crate) fn get_namespace_context(&self) -> Rc<RefCell<XmlNamespace>> {
         self.namespace_context.clone()
     }
+
+    /// Releases this element's namespace usage counts from its scope when detached.
+    pub(crate) fn release_ns_usage(&self) {
+        let mut namespace_context = self.namespace_context.borrow_mut();
+        match &self.ns_alias {
+            Some(alias) => namespace_context.decrement_alias_use_mut(alias),
+            None => namespace_context.decrement_alias_use_mut(""),
+        }
+        if let Some(attributes) = &self.attributes {
+            for attribute in attributes {
+                if let Some(alias) = attribute.get_ns_alias() {
+                    namespace_context.decrement_alias_use_mut(alias);
+                }
+            }
+        }
+    }
 }
 
 impl XmlElement {
@@ -987,6 +1056,7 @@ impl XmlElement {
                     );
                     let inherited = (*namespace_context.borrow()).clone();
                     namespace_context = Rc::new(RefCell::new(inherited));
+                    namespace_context.borrow_mut().reset_alias_use_mut();
 
                     // Add each namespace declaration to the context
                     for namespace in namespaces {
@@ -1038,6 +1108,21 @@ impl XmlElement {
                 return Err(AnyError::msg(
                     "draviavemal-xml_rs::Attribute in new tag namespace alias used without refering schema",
                 ));
+            }
+
+            {
+                let mut namespace = namespace_context.borrow_mut();
+                match &ns_alias {
+                    Some(alias) => namespace.increment_alias_use_mut(alias),
+                    None => namespace.increment_alias_use_mut(""),
+                }
+                if let Some(attributes) = filtered_attributes.as_ref() {
+                    for attribute in attributes {
+                        if let Some(alias) = attribute.get_ns_alias() {
+                            namespace.increment_alias_use_mut(alias);
+                        }
+                    }
+                }
             }
 
             // Create and return the new element
