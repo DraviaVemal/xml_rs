@@ -23,7 +23,7 @@ pub struct XmlNamespace {
     /// Maps from namespace alias to URL
     url_alias: HashMap<NsUrl, NsAlias>,
     /// Maps from namespace URL to alias
-    alias_url: HashMap<NsAlias, NsUrl>,
+    alias_url: HashMap<NsAlias, (NsUrl, u32)>,
 }
 
 impl XmlNamespace {
@@ -38,7 +38,7 @@ impl XmlNamespace {
     /// * `url` - The namespace URI.
     pub(crate) fn add_url_alias_mut(&mut self, alias: &str, url: &str) {
         // When alias is rebound to a new URL, remove the stale url→alias entry first
-        if let Some(old_url) = self.alias_url.get(alias) {
+        if let Some((old_url, _)) = self.alias_url.get(alias) {
             if old_url != url {
                 warn!(
                     "draviavemal-xml_rs::Namespace alias '{}' rebound from '{}' to '{}'",
@@ -47,8 +47,12 @@ impl XmlNamespace {
                 self.url_alias.remove(old_url.as_str());
             }
         }
-        trace!("draviavemal-xml_rs::Registered namespace alias '{}' -> '{}'", alias, url);
-        self.alias_url.insert(alias.to_owned(), url.to_owned());
+        trace!(
+            "draviavemal-xml_rs::Registered namespace alias '{}' -> '{}'",
+            alias,
+            url
+        );
+        self.alias_url.insert(alias.to_owned(), (url.to_owned(), 0));
         self.url_alias.insert(url.to_owned(), alias.to_owned());
     }
 
@@ -69,9 +73,15 @@ impl XmlNamespace {
         let url = ns_attribute.get_value();
 
         if ns_name.is_empty() {
-            debug!("draviavemal-xml_rs::Registering default namespace -> '{}'", url);
+            debug!(
+                "draviavemal-xml_rs::Registering default namespace -> '{}'",
+                url
+            );
         } else {
-            debug!("draviavemal-xml_rs::Registering namespace '{}' -> '{}'", ns_name, url);
+            debug!(
+                "draviavemal-xml_rs::Registering namespace '{}' -> '{}'",
+                ns_name, url
+            );
         }
 
         // Add the mapping
@@ -80,6 +90,27 @@ impl XmlNamespace {
 
     pub(crate) fn is_valid_ns_alias(&self, ns_alias: &str) -> bool {
         self.alias_url.contains_key(ns_alias)
+    }
+
+    /// Increments the usage counter for the given alias, ignoring unknown aliases.
+    pub(crate) fn increment_alias_use_mut(&mut self, alias: &str) {
+        if let Some((_, usage_count)) = self.alias_url.get_mut(alias) {
+            *usage_count += 1;
+        }
+    }
+
+    /// Decrements the usage counter for the given alias, saturating at zero.
+    pub(crate) fn decrement_alias_use_mut(&mut self, alias: &str) {
+        if let Some((_, usage_count)) = self.alias_url.get_mut(alias) {
+            *usage_count = usage_count.saturating_sub(1);
+        }
+    }
+
+    /// Resets every alias usage counter in this scope to zero.
+    pub(crate) fn reset_alias_use_mut(&mut self) {
+        for (_, (_, usage_count)) in self.alias_url.iter_mut() {
+            *usage_count = 0;
+        }
     }
 }
 
@@ -95,7 +126,7 @@ impl XmlNamespace {
     ///
     /// # Returns
     /// * `Option<&String>` - The namespace URL if the alias is found, None otherwise.
-    pub(crate) fn _get_url(&self, alias: &str) -> Option<&String> {
+    pub(crate) fn _get_url(&self, alias: &str) -> Option<&(NsUrl, u32)> {
         self.alias_url.get(alias)
     }
 
@@ -111,7 +142,7 @@ impl XmlNamespace {
     }
 
     /// Returns a reference to the namespace context for this element.
-    pub(crate) fn get_namespace_alias_url(&self) -> &HashMap<NsAlias, NsUrl> {
+    pub(crate) fn get_namespace_alias_url(&self) -> &HashMap<NsAlias, (NsUrl, u32)> {
         &self.alias_url
     }
 }

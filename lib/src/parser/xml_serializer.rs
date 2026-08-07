@@ -9,6 +9,7 @@ use crate::{log_elapsed, NodeId, XmlDocument, XmlElement, XmlElementContentType}
 use anyhow::{Context, Error as AnyError, Result as AnyResult};
 use log::{debug, error, info, trace};
 use quick_xml::escape::escape;
+use std::collections::HashMap;
 use std::fs;
 
 /// Provides XML serialization utilities for converting `XmlDocument` objects to XML text.
@@ -33,17 +34,29 @@ impl XmlSerializer {
         xml_document: &mut XmlDocument,
         file_path: &str,
     ) -> AnyResult<(), AnyError> {
-        info!("draviavemal-xml_rs::Serializing XML document to file: {}", file_path);
+        info!(
+            "draviavemal-xml_rs::Serializing XML document to file: {}",
+            file_path
+        );
         // Convert the document to a byte vector
         let xml_bytes = Self::xml_tree_to_vec(xml_document)?;
 
         // Write the bytes to the file
-        fs::write(file_path, &xml_bytes).map_err(|e| {
-            error!("draviavemal-xml_rs::Failed to write XML file '{}': {}", file_path, e);
-            e
-        }).context("draviavemal-xml_rs::Failed to write XML file")?;
+        fs::write(file_path, &xml_bytes)
+            .map_err(|e| {
+                error!(
+                    "draviavemal-xml_rs::Failed to write XML file '{}': {}",
+                    file_path, e
+                );
+                e
+            })
+            .context("draviavemal-xml_rs::Failed to write XML file")?;
 
-        debug!("draviavemal-xml_rs::Wrote {} bytes to file '{}'", xml_bytes.len(), file_path);
+        debug!(
+            "draviavemal-xml_rs::Wrote {} bytes to file '{}'",
+            xml_bytes.len(),
+            file_path
+        );
         Ok(())
     }
 
@@ -92,7 +105,8 @@ impl XmlSerializer {
         xml_content.push_str(
             log_elapsed!(
                 || {
-                    Self::build_xml_tree(xml_document).context("draviavemal-xml_rs::Create XML Contact String Failed")
+                    Self::build_xml_tree(xml_document)
+                        .context("draviavemal-xml_rs::Create XML Contact String Failed")
                 },
                 format!("Deserialize File :")
             )?
@@ -101,7 +115,10 @@ impl XmlSerializer {
 
         // Convert the string to UTF-8 bytes
         let xml_bytes = xml_content.as_bytes().to_vec();
-        info!("draviavemal-xml_rs::XML document serialized to {} bytes", xml_bytes.len());
+        info!(
+            "draviavemal-xml_rs::XML document serialized to {} bytes",
+            xml_bytes.len()
+        );
         Ok(xml_bytes)
     }
 }
@@ -118,19 +135,31 @@ impl XmlSerializer {
     ///
     /// # Returns
     /// * `Result<String, AnyError>` - The formatted tag string with attributes.
-    fn build_element(element: &XmlElement) -> Result<String, AnyError> {
+    fn build_element(
+        element: &XmlElement,
+        inherited_ns: &HashMap<String, String>,
+    ) -> Result<(String, Vec<(String, String)>), AnyError> {
         let mut element_part = String::default();
+        let mut emitted_ns = Vec::new();
 
-        // Add the tag name with namespace if present
         element_part.push_str(&element.get_tag_ns());
 
-        // Add Namespace attributes
         if element.has_namespace() {
             let namespace_context = element.get_namespace_context();
             let namespace = namespace_context
                 .try_borrow()
                 .context("draviavemal-xml_rs::Failed to borrow namespace context")?;
-            for (prefix, uri) in namespace.get_namespace_alias_url().iter() {
+            for (prefix, (uri, usage_count)) in namespace.get_namespace_alias_url().iter() {
+                if *usage_count == 0 {
+                    continue;
+                }
+                if inherited_ns
+                    .get(prefix)
+                    .map(|bound_uri| bound_uri == uri)
+                    .unwrap_or(false)
+                {
+                    continue;
+                }
                 element_part.push_str(&format!(
                     " xmlns{}=\"{}\"",
                     if prefix.is_empty() {
@@ -140,12 +169,11 @@ impl XmlSerializer {
                     },
                     uri
                 ));
+                emitted_ns.push((prefix.clone(), uri.clone()));
             }
         }
-        // Add attributes if present
         if let Some(attributes) = element.get_attributes() {
             for attribute in attributes {
-                // Format each attribute as 'name="value"'
                 element_part.push_str(&format!(
                     " {}=\"{}\"",
                     attribute.get_ns_name(),
@@ -154,7 +182,7 @@ impl XmlSerializer {
             }
         }
 
-        Ok(element_part)
+        Ok((element_part, emitted_ns))
     }
 
     /// Recursively builds the XML content for an element and its children.
@@ -162,12 +190,14 @@ impl XmlSerializer {
     /// # Arguments
     /// * `xml_document` - The XML document containing all elements.
     /// * `element_id` - The ID of the element to process.
+    /// * `inherited_ns` - Prefix-to-URI bindings already emitted by ancestor elements.
     ///
     /// # Returns
     /// * `Result<String, AnyError>` - The serialized element content or an error.
     fn build_element_content(
         xml_document: &mut XmlDocument,
         element_id: NodeId,
+        inherited_ns: &HashMap<String, String>,
     ) -> Result<String, AnyError> {
         let mut content_part = String::default();
 
@@ -179,16 +209,25 @@ impl XmlSerializer {
 
         // Check if the element has contents
         if let Some(contents) = element.get_child_contents() {
-            // Start tag with attributes
-            content_part.push_str(&format!("<{}>", Self::build_element(&element)?));
+            let (open_tag, emitted_ns) = Self::build_element(&element, inherited_ns)?;
+            content_part.push_str(&format!("<{}>", open_tag));
 
-            // Process each content item
+            let mut extended_scope;
+            let child_ns: &HashMap<String, String> = if emitted_ns.is_empty() {
+                inherited_ns
+            } else {
+                extended_scope = inherited_ns.clone();
+                extended_scope.extend(emitted_ns);
+                &extended_scope
+            };
+
             for content in contents {
                 match content {
                     // Recursively process child elements
                     XmlElementContentType::Element((id, _, _)) => {
-                        let element_content = Self::build_element_content(xml_document, *id)
-                            .context("draviavemal-xml_rs::Failed to build element content")?;
+                        let element_content =
+                            Self::build_element_content(xml_document, *id, child_ns)
+                                .context("draviavemal-xml_rs::Failed to build element content")?;
                         content_part.push_str(&element_content);
                     }
                     // Escape and add text content
@@ -207,8 +246,8 @@ impl XmlSerializer {
                 content_part.push_str(&format!("</{}>", element.get_tag_ns()));
             }
         } else {
-            // Self-closing tag for elements without content
-            content_part.push_str(&format!("<{}/>", Self::build_element(&element)?));
+            let (open_tag, _) = Self::build_element(&element, inherited_ns)?;
+            content_part.push_str(&format!("<{}/>", open_tag));
         }
 
         Ok(content_part)
@@ -226,10 +265,13 @@ impl XmlSerializer {
 
         // Get the root element ID
         let current_id = xml_document.get_root_id();
-        trace!("draviavemal-xml_rs::Serializing XML tree starting from root node {}", current_id);
+        trace!(
+            "draviavemal-xml_rs::Serializing XML tree starting from root node {}",
+            current_id
+        );
 
         // Build the XML tree starting from the root
-        let root_content = Self::build_element_content(xml_document, current_id)
+        let root_content = Self::build_element_content(xml_document, current_id, &HashMap::new())
             .context("draviavemal-xml_rs::Failed to build root content tree")?;
 
         xml_part.push_str(&root_content);

@@ -652,6 +652,10 @@ impl XmlDocument {
             }
         }
 
+        if let Ok(element) = self.get_element(element_id) {
+            element.release_ns_usage();
+        }
+
         // Remove all descendant elements recursively
         self.clear_element_subtree_mut(element_id)
             .context("draviavemal-xml_rs::Failed to clean up child element tree")?;
@@ -709,6 +713,9 @@ impl XmlDocument {
             // Process each content item
             for content in contents {
                 if let XmlElementContentType::Element((child_id, _, _)) = content {
+                    if let Ok(child) = self.get_element(child_id) {
+                        child.release_ns_usage();
+                    }
                     // Recursively clear the subtree of each child element
                     self.clear_element_subtree_mut(child_id)?;
                 }
