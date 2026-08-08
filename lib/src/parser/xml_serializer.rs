@@ -31,7 +31,7 @@ impl XmlSerializer {
     /// # Returns
     /// * `AnyResult<(), AnyError>` - Success or an error.
     pub fn xml_doc_tree_to_file(
-        xml_document: &mut XmlDocument,
+        xml_document: &XmlDocument,
         file_path: &str,
     ) -> AnyResult<(), AnyError> {
         info!(
@@ -67,7 +67,7 @@ impl XmlSerializer {
     ///
     /// # Returns
     /// * `AnyResult<Vec<u8>, AnyError>` - The serialized XML as bytes, or an error.
-    pub fn xml_tree_to_vec(xml_document: &mut XmlDocument) -> AnyResult<Vec<u8>, AnyError> {
+    pub fn xml_tree_to_vec(xml_document: &XmlDocument) -> AnyResult<Vec<u8>, AnyError> {
         debug!("draviavemal-xml_rs::Building XML output string from document tree");
         let mut xml_content = String::default();
 
@@ -160,25 +160,30 @@ impl XmlSerializer {
                 {
                     continue;
                 }
-                element_part.push_str(&format!(
-                    " xmlns{}=\"{}\"",
-                    if prefix.is_empty() {
-                        "".to_string()
-                    } else {
-                        format!(":{}", prefix).to_string()
-                    },
-                    uri
-                ));
+                element_part.push_str(" xmlns");
+                if !prefix.is_empty() {
+                    element_part.push(':');
+                    element_part.push_str(prefix);
+                }
+                element_part.push_str("=\"");
+                element_part.push_str(uri);
+                element_part.push('"');
                 emitted_ns.push((prefix.clone(), uri.clone()));
             }
         }
         if let Some(attributes) = element.get_attributes() {
             for attribute in attributes {
-                element_part.push_str(&format!(
-                    " {}=\"{}\"",
-                    attribute.get_ns_name(),
-                    attribute.get_value()
-                ));
+                element_part.push(' ');
+                if let Some(alias) = attribute.get_ns_alias() {
+                    if !alias.is_empty() {
+                        element_part.push_str(alias);
+                        element_part.push(':');
+                    }
+                }
+                element_part.push_str(attribute.get_name());
+                element_part.push_str("=\"");
+                element_part.push_str(attribute.get_value());
+                element_part.push('"');
             }
         }
 
@@ -195,22 +200,23 @@ impl XmlSerializer {
     /// # Returns
     /// * `Result<String, AnyError>` - The serialized element content or an error.
     fn build_element_content(
-        xml_document: &mut XmlDocument,
+        xml_document: &XmlDocument,
         element_id: NodeId,
         inherited_ns: &HashMap<String, String>,
     ) -> Result<String, AnyError> {
         let mut content_part = String::default();
 
-        // Get a copy of the element to work with
+        // Borrow the element in place; serialization never mutates the tree.
         let element = xml_document
-            .get_element_mut(element_id)
-            .context("draviavemal-xml_rs::Failed to get element")?
-            .clone_limited();
+            .get_element(element_id)
+            .context("draviavemal-xml_rs::Failed to get element")?;
 
         // Check if the element has contents
         if let Some(contents) = element.get_child_contents() {
-            let (open_tag, emitted_ns) = Self::build_element(&element, inherited_ns)?;
-            content_part.push_str(&format!("<{}>", open_tag));
+            let (open_tag, emitted_ns) = Self::build_element(element, inherited_ns)?;
+            content_part.push('<');
+            content_part.push_str(&open_tag);
+            content_part.push('>');
 
             let mut extended_scope;
             let child_ns: &HashMap<String, String> = if emitted_ns.is_empty() {
@@ -232,22 +238,28 @@ impl XmlSerializer {
                     }
                     // Escape and add text content
                     XmlElementContentType::Text(text) => {
-                        content_part.push_str(&escape(text.to_string()));
+                        content_part.push_str(&escape(text.as_str()));
                     }
                     // Format comments
                     XmlElementContentType::Comment(comment) => {
-                        content_part.push_str(&format!("<!--{}-->", comment));
+                        content_part.push_str("<!--");
+                        content_part.push_str(comment);
+                        content_part.push_str("-->");
                     }
                 }
             }
 
             // Only add closing tag if there's content
             if !contents.is_empty() {
-                content_part.push_str(&format!("</{}>", element.get_tag_ns()));
+                content_part.push_str("</");
+                content_part.push_str(&element.get_tag_ns());
+                content_part.push('>');
             }
         } else {
-            let (open_tag, _) = Self::build_element(&element, inherited_ns)?;
-            content_part.push_str(&format!("<{}/>", open_tag));
+            let (open_tag, _) = Self::build_element(element, inherited_ns)?;
+            content_part.push('<');
+            content_part.push_str(&open_tag);
+            content_part.push_str("/>");
         }
 
         Ok(content_part)
@@ -260,7 +272,7 @@ impl XmlSerializer {
     ///
     /// # Returns
     /// * `AnyResult<String, AnyError>` - The complete XML string or an error.
-    fn build_xml_tree(xml_document: &mut XmlDocument) -> AnyResult<String, AnyError> {
+    fn build_xml_tree(xml_document: &XmlDocument) -> AnyResult<String, AnyError> {
         let mut xml_part = String::default();
 
         // Get the root element ID

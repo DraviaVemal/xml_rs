@@ -14,6 +14,108 @@ pub type NsAlias = String;
 /// Namespace url
 pub type NsUrl = String;
 
+/// Declarative namespace binding pairing a URI with its canonical alias.
+///
+/// Passed to the namespace-aware element and attribute APIs so alias mapping and
+/// declaration are resolved against the live document scope instead of hard coded
+/// prefixes. Resolution precedence is `alias_override` > alias already in scope for
+/// `uri` > `default_alias`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NamespaceDeclaration {
+    /// W3C namespace URI, e.g. "http://schemas.openxmlformats.org/drawingml/2006/main".
+    pub uri: &'static str,
+    /// Alias used when the URI is not already declared in scope, e.g. "a".
+    pub default_alias: &'static str,
+    /// Forces this alias regardless of any alias already bound to the URI in scope.
+    pub alias_override: Option<&'static str>,
+}
+
+impl NamespaceDeclaration {
+    // =====================================================================
+    //  RECOMMENDED — namespace-aware API (robust, preferred entry points)
+    // =====================================================================
+    // These constructors build the declarations that drive every namespace-aware
+    // element and attribute method. Prefer them over hand-writing `prefix:name`
+    // strings so alias mapping and `xmlns` emission stay correct per document scope.
+
+    /// Builds a declaration that adopts the alias already bound to `uri` in scope,
+    /// falling back to `default_alias` when the URI is not yet declared.
+    ///
+    /// Use this for the common case where a single canonical alias is acceptable and the
+    /// document is free to reuse whatever alias an ancestor already declared for the URI.
+    ///
+    /// # Arguments
+    /// * `uri` - The W3C namespace URI this declaration represents.
+    /// * `default_alias` - The alias emitted when the URI is not already in scope.
+    ///
+    /// # Returns
+    /// * `NamespaceDeclaration` - A declaration whose `alias_override` is `None`, so resolution
+    ///   follows the precedence: in-scope alias for `uri` > `default_alias`.
+    pub const fn new(uri: &'static str, default_alias: &'static str) -> Self {
+        NamespaceDeclaration {
+            uri,
+            default_alias,
+            alias_override: None,
+        }
+    }
+
+    /// Builds a declaration that forces `alias_override` even when a different alias is
+    /// already bound to `uri` in scope.
+    ///
+    /// Use this when a specific prefix must appear in the output regardless of what an
+    /// ancestor declared; the resolver will (re)declare `alias_override -> uri` on the
+    /// element being written when the binding is not already present.
+    ///
+    /// # Arguments
+    /// * `uri` - The W3C namespace URI this declaration represents.
+    /// * `default_alias` - Retained for parity with [`NamespaceDeclaration::new`]; unused while
+    ///   `alias_override` is set but preserved so callers can drop the override later.
+    /// * `alias_override` - The alias that resolution always selects for `uri`.
+    ///
+    /// # Returns
+    /// * `NamespaceDeclaration` - A declaration whose resolution precedence is:
+    ///   `alias_override` > in-scope alias for `uri` > `default_alias`.
+    pub const fn with_override(
+        uri: &'static str,
+        default_alias: &'static str,
+        alias_override: &'static str,
+    ) -> Self {
+        NamespaceDeclaration {
+            uri,
+            default_alias,
+            alias_override: Some(alias_override),
+        }
+    }
+
+    // =====================================================================
+    //  SHARED — internal resolution (crate visible)
+    // =====================================================================
+
+    /// Resolves the alias for this declaration against `namespace`.
+    ///
+    /// Applies the precedence `alias_override` > alias already bound to `uri` > `default_alias`.
+    ///
+    /// # Arguments
+    /// * `namespace` - The scope to resolve against.
+    ///
+    /// # Returns
+    /// * `(alias, needs_declaration)` - The alias to use and whether the scope must
+    ///   declare `alias -> uri` because it is not already bound to that URI.
+    pub(crate) fn resolve_in(&self, namespace: &XmlNamespace) -> (String, bool) {
+        if let Some(alias_override) = self.alias_override {
+            let already_bound = namespace
+                .get_url(alias_override)
+                .map(|(bound_uri, _)| bound_uri == self.uri)
+                .unwrap_or(false);
+            return (alias_override.to_string(), !already_bound);
+        }
+        if let Some(existing_alias) = namespace.get_alias(self.uri) {
+            return (existing_alias.clone(), false);
+        }
+        (self.default_alias.to_string(), true)
+    }
+}
+
 /// Manages XML namespace mappings between aliases (prefixes) and URLs.
 ///
 /// This struct provides bidirectional mapping between namespace prefixes and their
@@ -126,7 +228,7 @@ impl XmlNamespace {
     ///
     /// # Returns
     /// * `Option<&String>` - The namespace URL if the alias is found, None otherwise.
-    pub(crate) fn _get_url(&self, alias: &str) -> Option<&(NsUrl, u32)> {
+    pub(crate) fn get_url(&self, alias: &str) -> Option<&(NsUrl, u32)> {
         self.alias_url.get(alias)
     }
 
@@ -137,7 +239,7 @@ impl XmlNamespace {
     ///
     /// # Returns
     /// * `Option<&String>` - The alias/prefix if the URL is found, None otherwise.
-    pub(crate) fn _get_alias(&self, url: &str) -> Option<&String> {
+    pub(crate) fn get_alias(&self, url: &str) -> Option<&String> {
         self.url_alias.get(url)
     }
 

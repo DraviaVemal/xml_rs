@@ -6,7 +6,8 @@
  */
 
 use crate::{
-    NsTag, Tag, XPathHandler, XmlAttribute, XmlElement, XmlElementContentType, XmlNamespace,
+    NamespaceDeclaration, NsTag, Tag, XPathHandler, XmlAttribute, XmlElement,
+    XmlElementContentType, XmlNamespace,
 };
 use anyhow::{Context, Error as AnyError};
 use log::{debug, trace, warn};
@@ -46,15 +47,170 @@ impl Default for XmlDocument {
 }
 
 impl XmlDocument {
-    // --------------------------
-    // pub mut self methods
-    // --------------------------
+    // =====================================================================
+    //  RECOMMENDED — namespace-aware, mutating API (robust, preferred)
+    // =====================================================================
+    // Build elements from a `NamespaceDeclaration`: the alias is resolved from the live
+    // scope and `xmlns` is emitted only when required. Prefer these to guarantee valid,
+    // round-trippable namespace handling.
 
-    /// Creates and inserts the root element into the document.
+    /// Creates the root element from a namespace declaration.
+    ///
+    /// The root starts with an empty scope, so the declaration's alias (`alias_override`
+    /// when set, otherwise `default_alias`) is always emitted as an `xmlns` declaration.
     ///
     /// # Arguments
-    /// * `tag` - The tag name for the root element.
-    /// * `attributes` - Optional attributes for the root element.
+    /// * `declaration` - The namespace declaration describing the URI and preferred alias.
+    /// * `local_name` - The root local name without prefix.
+    /// * `attributes` - Optional additional attributes for the root element.
+    ///
+    /// # Returns
+    /// * `Result<NodeId, AnyError>` - The node ID of the created root element, or an error if
+    ///   the tag or an attribute name is invalid.
+    pub fn create_root_element_ns_mut(
+        &mut self,
+        declaration: &NamespaceDeclaration,
+        local_name: &str,
+        attributes: Option<Vec<XmlAttribute>>,
+    ) -> Result<NodeId, AnyError> {
+        let alias = declaration.alias_override.unwrap_or(declaration.default_alias);
+        let (ns_tag, xmlns_name) = if alias.is_empty() {
+            (local_name.to_owned(), "xmlns".to_owned())
+        } else {
+            (format!("{}:{}", alias, local_name), format!("xmlns:{}", alias))
+        };
+        let mut augmented_attributes = attributes.unwrap_or_default();
+        augmented_attributes.push(XmlAttribute::new(xmlns_name, declaration.uri.to_owned()));
+        self.create_root_element_mut(&ns_tag, Some(augmented_attributes))
+    }
+
+    /// Appends a child element resolved through a namespace declaration.
+    ///
+    /// The alias for `declaration.uri` is resolved against the parent scope; when the URI is
+    /// not already declared an `xmlns` declaration is injected so the child introduces the
+    /// binding, otherwise the existing in-scope alias is reused.
+    ///
+    /// # Arguments
+    /// * `parent_id` - The node ID of the parent element.
+    /// * `declaration` - The namespace declaration describing the URI and preferred alias.
+    /// * `local_name` - The child local name without prefix.
+    /// * `attributes` - Optional additional attributes for the child element.
+    ///
+    /// # Returns
+    /// * `Result<NodeId, AnyError>` - The node ID of the created child element, or an error.
+    pub fn append_child_element_ns_mut(
+        &mut self,
+        parent_id: NodeId,
+        declaration: &NamespaceDeclaration,
+        local_name: &str,
+        attributes: Option<Vec<XmlAttribute>>,
+    ) -> Result<NodeId, AnyError> {
+        let (ns_tag, attributes) =
+            self.build_ns_child_tag(parent_id, declaration, local_name, attributes)?;
+        self.append_child_element_mut(parent_id, &ns_tag, attributes)
+    }
+
+    /// Inserts a namespace-declared child after the last occurrence of a namespaced tag.
+    ///
+    /// Resolves the new element's tag through `declaration` (as with
+    /// [`XmlDocument::append_child_element_ns_mut`]) while positioning it relative to the
+    /// existing `last_tag_ns` reference. If the reference tag is absent the child is appended.
+    ///
+    /// # Arguments
+    /// * `parent_id` - The node ID of the parent element.
+    /// * `declaration` - The namespace declaration describing the URI and preferred alias.
+    /// * `local_name` - The new child local name without prefix.
+    /// * `last_tag_ns` - The namespaced tag to position after (reference point).
+    /// * `attributes` - Optional additional attributes for the new child element.
+    ///
+    /// # Returns
+    /// * `Result<NodeId, AnyError>` - The node ID of the created child element, or an error.
+    pub fn inser_child_element_after_last_tag_ns_decl_mut(
+        &mut self,
+        parent_id: NodeId,
+        declaration: &NamespaceDeclaration,
+        local_name: &str,
+        last_tag_ns: &str,
+        attributes: Option<Vec<XmlAttribute>>,
+    ) -> Result<NodeId, AnyError> {
+        let (ns_tag, attributes) =
+            self.build_ns_child_tag(parent_id, declaration, local_name, attributes)?;
+        self.inser_child_element_after_last_tag_ns_mut(parent_id, &ns_tag, last_tag_ns, attributes)
+    }
+
+    /// Inserts a namespace-declared child before the first occurrence of a namespaced tag.
+    ///
+    /// Resolves the new element's tag through `declaration` (as with
+    /// [`XmlDocument::append_child_element_ns_mut`]) while positioning it relative to the
+    /// existing `first_tag_ns` reference. If the reference tag is absent the child is inserted
+    /// at the front.
+    ///
+    /// # Arguments
+    /// * `parent_id` - The node ID of the parent element.
+    /// * `declaration` - The namespace declaration describing the URI and preferred alias.
+    /// * `local_name` - The new child local name without prefix.
+    /// * `first_tag_ns` - The namespaced tag to position before (reference point).
+    /// * `attributes` - Optional additional attributes for the new child element.
+    ///
+    /// # Returns
+    /// * `Result<NodeId, AnyError>` - The node ID of the created child element, or an error.
+    pub fn inser_child_element_before_first_tag_ns_decl_mut(
+        &mut self,
+        parent_id: NodeId,
+        declaration: &NamespaceDeclaration,
+        local_name: &str,
+        first_tag_ns: &str,
+        attributes: Option<Vec<XmlAttribute>>,
+    ) -> Result<NodeId, AnyError> {
+        let (ns_tag, attributes) =
+            self.build_ns_child_tag(parent_id, declaration, local_name, attributes)?;
+        self.inser_child_element_before_first_tag_ns_mut(
+            parent_id, &ns_tag, first_tag_ns, attributes,
+        )
+    }
+
+    /// Resolves the alias for a declaration in an element's scope, declaring it if missing.
+    ///
+    /// Delegates to [`XmlElement::resolve_alias_mut`]: when the URI is not already bound the
+    /// element is promoted to its own namespace scope and the binding is registered.
+    ///
+    /// # Arguments
+    /// * `element_id` - The node ID whose scope drives resolution.
+    /// * `declaration` - The namespace declaration describing the URI and preferred alias.
+    ///
+    /// # Returns
+    /// * `Result<String, AnyError>` - The alias now in scope for the declaration's URI, or an
+    ///   error if the element does not exist.
+    pub fn resolve_alias_mut(
+        &mut self,
+        element_id: NodeId,
+        declaration: &NamespaceDeclaration,
+    ) -> Result<String, AnyError> {
+        Ok(self
+            .get_element_mut(element_id)
+            .context("draviavemal-xml_rs::Element not found for alias resolution")?
+            .resolve_alias_mut(declaration))
+    }
+
+    // =====================================================================
+    //  DEVELOPER HACK — direct string tags (maximum flexibility)
+    // =====================================================================
+    // These take a raw `prefix:name` tag and require any prefix to be declared in scope
+    // already (via an `xmlns` attribute). They offer full control over the emitted markup;
+    // prefer the namespace-aware methods above for documents that must round-trip.
+
+    /// Creates and inserts the root element into the document from a raw tag string.
+    ///
+    /// Any prefix in `tag` must be declared through an accompanying `xmlns` attribute in
+    /// `attributes`, which is folded into the document's namespace tree.
+    ///
+    /// # Recommendation
+    /// Prefer [`XmlDocument::create_root_element_ns_mut`], which derives the prefix and emits the
+    /// matching `xmlns` declaration from a [`NamespaceDeclaration`].
+    ///
+    /// # Arguments
+    /// * `tag` - The tag name for the root element (e.g., "ns:root").
+    /// * `attributes` - Optional attributes, including any `xmlns` declarations.
     ///
     /// # Returns
     /// * `Result<NodeId, AnyError>` - The node ID of the created root element, or an error.
@@ -85,11 +241,18 @@ impl XmlDocument {
         Ok(node_id)
     }
 
-    /// Adds a child element to a parent element.
+    /// Adds a child element to a parent element from a raw tag string.
+    ///
+    /// Any prefix in `new_tag` must already be declared in the parent scope, or be introduced
+    /// through an `xmlns` attribute in `attributes`.
+    ///
+    /// # Recommendation
+    /// Prefer [`XmlDocument::append_child_element_ns_mut`], which resolves the prefix from the
+    /// parent scope and declares it only when needed.
     ///
     /// # Arguments
     /// * `parent_id` - The node ID of the parent element.
-    /// * `tag` - The tag name for the child element.
+    /// * `new_tag` - The tag name for the child element (e.g., "ns:child").
     /// * `attributes` - Optional attributes for the child element.
     ///
     /// # Returns
@@ -118,21 +281,23 @@ impl XmlDocument {
         Ok(node_id)
     }
 
-    /// Inserts a child element after the last occurrence of a specific tag.
+    /// Inserts a child element after the last occurrence of a specific local tag.
     ///
-    /// This method finds the last element with the specified tag name among
-    /// the parent's children and inserts the new element immediately after it.
-    /// If no matching element is found, the new element is appended at the end.
+    /// Finds the last child with the given local tag name and inserts the new element
+    /// immediately after it; if no match is found the new element is appended at the end.
+    ///
+    /// # Recommendation
+    /// Prefer [`XmlDocument::inser_child_element_after_last_tag_ns_decl_mut`] for namespaced tags,
+    /// which resolves the new element's prefix from scope.
     ///
     /// # Arguments
     /// * `parent_id` - The node ID of the parent element.
-    /// * `tag` - The tag name for the new child element.
-    /// * `last_tag` - The tag name to position after (reference point).
+    /// * `new_tag` - The tag name for the new child element.
+    /// * `last_tag` - The local tag name to position after (reference point).
     /// * `attributes` - Optional attributes for the new child element.
     ///
     /// # Returns
     /// * `Result<NodeId, AnyError>` - The node ID of the created child element, or an error.
-    ///
     pub fn inser_child_element_after_last_tag_mut(
         &mut self,
         parent_id: NodeId,
@@ -152,16 +317,19 @@ impl XmlDocument {
         Ok(node_id)
     }
 
-    /// Inserts a child element before the first occurrence of a specific tag.
+    /// Inserts a child element before the first occurrence of a specific local tag.
     ///
-    /// This method finds the first element with the specified tag name among
-    /// the parent's children and inserts the new element immediately before it.
-    /// If no matching element is found, the new element is inserted at the beginning.
+    /// Finds the first child with the given local tag name and inserts the new element
+    /// immediately before it; if no match is found the new element is inserted at the front.
+    ///
+    /// # Recommendation
+    /// Prefer [`XmlDocument::inser_child_element_before_first_tag_ns_decl_mut`] for namespaced
+    /// tags, which resolves the new element's prefix from scope.
     ///
     /// # Arguments
     /// * `parent_id` - The node ID of the parent element.
-    /// * `tag` - The tag name for the new child element.
-    /// * `first_tag` - The tag name to position before (reference point).
+    /// * `new_tag` - The tag name for the new child element.
+    /// * `first_tag` - The local tag name to position before (reference point).
     /// * `attributes` - Optional attributes for the new child element.
     ///
     /// # Returns
@@ -187,12 +355,16 @@ impl XmlDocument {
 
     /// Inserts a child element after the last occurrence of a specific namespaced tag.
     ///
-    /// Similar to `inser_child_element_after_last_tag_mut` but matches using the full
-    /// namespaced tag name (e.g., "ns:tag") rather than just the local name.
+    /// Like [`XmlDocument::inser_child_element_after_last_tag_mut`] but matches the reference
+    /// using the full namespaced tag name (e.g., "ns:tag") rather than just the local name.
+    ///
+    /// # Recommendation
+    /// Prefer [`XmlDocument::inser_child_element_after_last_tag_ns_decl_mut`], which additionally
+    /// resolves the new element's own prefix from a [`NamespaceDeclaration`].
     ///
     /// # Arguments
     /// * `parent_id` - The node ID of the parent element.
-    /// * `tag` - The tag name for the new child element.
+    /// * `new_tag` - The tag name for the new child element.
     /// * `last_tag_ns` - The namespaced tag to position after (reference point).
     /// * `attributes` - Optional attributes for the new child element.
     ///
@@ -219,12 +391,16 @@ impl XmlDocument {
 
     /// Inserts a child element before the first occurrence of a specific namespaced tag.
     ///
-    /// Similar to `inser_child_element_before_first_tag_mut` but matches using the full
-    /// namespaced tag name (e.g., "ns:tag") rather than just the local name.
+    /// Like [`XmlDocument::inser_child_element_before_first_tag_mut`] but matches the reference
+    /// using the full namespaced tag name (e.g., "ns:tag") rather than just the local name.
+    ///
+    /// # Recommendation
+    /// Prefer [`XmlDocument::inser_child_element_before_first_tag_ns_decl_mut`], which additionally
+    /// resolves the new element's own prefix from a [`NamespaceDeclaration`].
     ///
     /// # Arguments
     /// * `parent_id` - The node ID of the parent element.
-    /// * `tag` - The tag name for the new child element.
+    /// * `new_tag` - The tag name for the new child element.
     /// * `first_tag_ns` - The namespaced tag to position before (reference point).
     /// * `attributes` - Optional attributes for the new child element.
     ///
@@ -249,6 +425,10 @@ impl XmlDocument {
         Ok(node_id)
     }
 
+    // =====================================================================
+    //  SHARED — mutating lifecycle (namespace independent)
+    // =====================================================================
+
     /// Gets a mutable reference to an element by node ID.
     ///
     /// # Arguments
@@ -271,7 +451,7 @@ impl XmlDocument {
             })
     }
 
-    /// Clears the content of an element, removing all children.
+    /// Clears the content of an element, removing all of its children.
     ///
     /// # Arguments
     /// * `element_id` - The node ID of the element to clear.
@@ -296,9 +476,37 @@ impl XmlDocument {
 }
 
 impl XmlDocument {
-    // --------------------------
-    // pub self methods
-    // --------------------------
+    // =====================================================================
+    //  RECOMMENDED — namespace-aware, read API (robust, preferred)
+    // =====================================================================
+
+    /// Resolves the alias a declaration would use in an element's scope without mutating it.
+    ///
+    /// Read-only counterpart to [`XmlDocument::resolve_alias_mut`]: applies the precedence
+    /// `alias_override` > alias already bound to the URI > `default_alias` and never declares a
+    /// missing binding.
+    ///
+    /// # Arguments
+    /// * `element_id` - The node ID whose scope drives resolution.
+    /// * `declaration` - The namespace declaration describing the URI and preferred alias.
+    ///
+    /// # Returns
+    /// * `Result<String, AnyError>` - The alias resolution selects for the declaration's URI,
+    ///   or an error if the element does not exist.
+    pub fn resolve_alias(
+        &self,
+        element_id: NodeId,
+        declaration: &NamespaceDeclaration,
+    ) -> Result<String, AnyError> {
+        Ok(self
+            .get_element(element_id)
+            .context("draviavemal-xml_rs::Element not found for alias resolution")?
+            .resolve_alias(declaration))
+    }
+
+    // =====================================================================
+    //  SHARED — neutral read / query / lifecycle
+    // =====================================================================
 
     /// Gets the XML version string.
     ///
@@ -362,19 +570,17 @@ impl XmlDocument {
         }
     }
 
-    /// Describe this function.
+    /// Evaluates an XPath-style query against the document.
+    ///
+    /// Note: XPath evaluation is not yet implemented; this currently parses the query and
+    /// returns `Ok(None)`.
     ///
     /// # Arguments
-    ///
-    /// - `&self` (`undefined`) - Describe this parameter.
+    /// * `query_path` - The query expression to evaluate.
     ///
     /// # Returns
-    ///
-    /// - `Result<Option<Vec<NodeId>>,AnyError>` - Describe the return value.
-    ///
-    /// # Errors
-    ///
-    /// Describe possible errors.
+    /// * `Result<Option<Vec<NodeId>>, AnyError>` - The matching node IDs, or None when there
+    ///   are no matches.
     pub fn query_xpath(&self, query_path: &str) -> Result<Option<Vec<NodeId>>, AnyError> {
         let xpath_handler = XPathHandler::new(query_path);
         Ok(None)
@@ -726,6 +932,46 @@ impl XmlDocument {
 }
 
 impl XmlDocument {
+    /// Builds a namespaced child tag from a declaration and augments attributes if needed.
+    ///
+    /// Resolves the alias for `declaration.uri` against the parent scope and, when the URI
+    /// is not already declared, appends the matching `xmlns` attribute so the child element
+    /// introduces the binding.
+    ///
+    /// # Returns
+    /// * `Result<(NsTag, Option<Vec<XmlAttribute>>), AnyError>` - The resolved namespaced tag
+    ///   and the attribute list to create the element with.
+    fn build_ns_child_tag(
+        &self,
+        parent_id: NodeId,
+        declaration: &NamespaceDeclaration,
+        local_name: &str,
+        attributes: Option<Vec<XmlAttribute>>,
+    ) -> Result<(NsTag, Option<Vec<XmlAttribute>>), AnyError> {
+        let ns_context = self
+            .get_element(parent_id)
+            .context("draviavemal-xml_rs::Failed to pull parent element")?
+            .get_ns_context();
+        let (alias, needs_declaration) = declaration.resolve_in(&ns_context.borrow());
+        let ns_tag = if alias.is_empty() {
+            local_name.to_owned()
+        } else {
+            format!("{}:{}", alias, local_name)
+        };
+        if needs_declaration {
+            let xmlns_name = if alias.is_empty() {
+                "xmlns".to_owned()
+            } else {
+                format!("xmlns:{}", alias)
+            };
+            let mut augmented_attributes = attributes.unwrap_or_default();
+            augmented_attributes.push(XmlAttribute::new(xmlns_name, declaration.uri.to_owned()));
+            Ok((ns_tag, Some(augmented_attributes)))
+        } else {
+            Ok((ns_tag, attributes))
+        }
+    }
+
     fn create_insert_element_into_collection(
         &mut self,
         parent_id: NodeId,
