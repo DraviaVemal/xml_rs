@@ -5,7 +5,9 @@
  * - Commercial use requires a separate license.
  */
 
-use crate::{utils::validation::is_valid_xml_name, NodeId, XmlAttribute, XmlNamespace};
+use crate::{
+    utils::validation::is_valid_xml_name, NamespaceDeclaration, NodeId, XmlAttribute, XmlNamespace,
+};
 use anyhow::{Context, Error as AnyError, Result as AnyResult};
 use log::{debug, trace, warn};
 use std::{cell::RefCell, rc::Rc};
@@ -54,25 +56,95 @@ pub struct XmlElement {
 
 // Consumer Public mut API
 impl XmlElement {
-    // --------------------------
-    // pub mut self methods
-    // --------------------------
+    // =====================================================================
+    //  RECOMMENDED — namespace-aware, mutating API (robust, preferred)
+    // =====================================================================
+    // These resolve prefixes from the live document scope, keeping alias mapping and
+    // `xmlns` emission correct. Prefer them over the raw-string helpers further down.
 
-    /// Adds an attribute to this element.
+    /// Adds an attribute resolved through a namespace declaration.
+    ///
+    /// The alias for `declaration.uri` is resolved against this element's scope; when the
+    /// URI is not yet declared the scope is promoted to its own namespace context and the
+    /// binding is added so the serializer emits the matching `xmlns` declaration. When the
+    /// URI is already in scope the existing alias is reused and no redundant declaration is
+    /// produced.
+    ///
+    /// # Arguments
+    /// * `declaration` - The namespace declaration describing the URI and preferred alias.
+    /// * `local_name` - The attribute local name without prefix (e.g., "embed").
+    /// * `value` - The attribute value.
+    ///
+    /// # Returns
+    /// * `AnyResult<(), AnyError>` - Ok on success, or an error if an attribute with the same
+    ///   resolved namespaced name already exists on this element.
+    pub fn add_attribute_ns_mut(
+        &mut self,
+        declaration: &NamespaceDeclaration,
+        local_name: &str,
+        value: &str,
+    ) -> AnyResult<(), AnyError> {
+        let (alias, needs_declaration) =
+            declaration.resolve_in(&self.namespace_context.borrow());
+        if needs_declaration {
+            self.ensure_namespace_scope_mut(&alias, declaration.uri);
+        }
+        let attribute_name = if alias.is_empty() {
+            local_name.to_owned()
+        } else {
+            format!("{}:{}", alias, local_name)
+        };
+        self.add_attribute_mut(XmlAttribute::new(attribute_name, value.to_owned()))
+    }
+
+    /// Resolves the alias for a namespace declaration, declaring it in scope if missing.
+    ///
+    /// Unlike [`XmlElement::resolve_alias`], when the URI is not already bound this promotes
+    /// the element to its own namespace context and registers the binding so the alias is
+    /// valid for subsequent tag or attribute construction.
+    ///
+    /// # Arguments
+    /// * `declaration` - The namespace declaration describing the URI and preferred alias.
+    ///
+    /// # Returns
+    /// * `String` - The alias now in scope for the declaration's URI.
+    pub fn resolve_alias_mut(&mut self, declaration: &NamespaceDeclaration) -> String {
+        let (alias, needs_declaration) =
+            declaration.resolve_in(&self.namespace_context.borrow());
+        if needs_declaration {
+            self.ensure_namespace_scope_mut(&alias, declaration.uri);
+        }
+        alias
+    }
+
+    // =====================================================================
+    //  DEVELOPER HACK — direct string attributes (maximum flexibility)
+    // =====================================================================
+    // These trust the caller-supplied prefix verbatim and validate it only against the
+    // aliases already declared in scope. They give full control over the emitted prefix;
+    // prefer the namespace-aware methods above for documents that must round-trip cleanly.
+
+    /// Adds an attribute to this element from a pre-built [`XmlAttribute`].
     ///
     /// The attribute name must be unique within the element. If an attribute with the
-    /// same namespaced name already exists, an error is returned.
+    /// same namespaced name already exists, an error is returned. Any prefix on the
+    /// attribute must already be declared in scope or the call is rejected.
+    ///
+    /// # Recommendation
+    /// Prefer [`XmlElement::add_attribute_ns_mut`], which resolves and, if necessary, declares
+    /// the alias from the live scope instead of trusting a hard-coded prefix.
     ///
     /// # Arguments
     /// * `attribute` - The XML attribute to add to this element.
     ///
     /// # Returns
     /// * `AnyResult<(), AnyError>` - An empty result if the attribute was added successfully,
-    ///   or an error if an attribute with the same name already exists.
+    ///   or an error if an attribute with the same name already exists or uses an undeclared
+    ///   namespace alias.
     pub fn add_attribute_mut(&mut self, attribute: XmlAttribute) -> AnyResult<(), AnyError> {
         let attributes = self.attributes.get_or_insert_with(Vec::new);
         // Validate ns alias if exist
-        if !attribute.is_valid_ns_alias(self.namespace_context.clone()) {
+        if !attribute.is_valid_ns_alias(&self.namespace_context.borrow()) {
             warn!(
                 "draviavemal-xml_rs::Rejected attribute '{}': namespace alias not declared in scope",
                 attribute.get_ns_name()
@@ -112,24 +184,31 @@ impl XmlElement {
         Ok(())
     }
 
-    /// Adds or replaces an attribute on this element.
+    /// Adds or replaces an attribute on this element from a pre-built [`XmlAttribute`].
     ///
     /// The attribute is matched by its namespaced name. If an attribute with the same
     /// name already exists, it is replaced in-place at its current position. Otherwise,
-    /// the attribute is appended to the end of the attribute list.
+    /// the attribute is appended to the end of the attribute list. Any prefix must already
+    /// be declared in scope.
+    ///
+    /// # Recommendation
+    /// For namespaced attributes prefer [`XmlElement::add_attribute_ns_mut`], which resolves the
+    /// alias from scope; combine with [`XmlElement::remove_attribute_ns_mut`] when a true
+    /// replace is required.
     ///
     /// # Arguments
     /// * `attribute` - The XML attribute to add or replace.
     ///
     /// # Returns
-    /// * `AnyResult<(), AnyError>` - Ok on success.
+    /// * `AnyResult<(), AnyError>` - Ok on success, or an error if the attribute uses an
+    ///   undeclared namespace alias.
     pub fn add_replace_attribute_mut(
         &mut self,
         attribute: XmlAttribute,
     ) -> AnyResult<(), AnyError> {
         let attributes = self.attributes.get_or_insert_with(Vec::new);
         // Validate ns alias if exist
-        if !attribute.is_valid_ns_alias(self.namespace_context.clone()) {
+        if !attribute.is_valid_ns_alias(&self.namespace_context.borrow()) {
             warn!(
                 "draviavemal-xml_rs::Rejected replace of attribute '{}': namespace alias not declared in scope",
                 attribute.get_ns_name()
@@ -183,14 +262,19 @@ impl XmlElement {
     /// Sets the initial attributes of this element from a vector.
     ///
     /// This is intended for initialising an element's attributes. If the element already
-    /// has one or more attributes, an error is returned.
+    /// has one or more attributes, an error is returned. Every prefixed attribute must use
+    /// an alias already declared in scope.
+    ///
+    /// # Recommendation
+    /// For adding namespaced attributes incrementally after creation prefer
+    /// [`XmlElement::add_attribute_ns_mut`], which declares missing aliases automatically.
     ///
     /// # Arguments
     /// * `attributes` - The attributes to set on this element.
     ///
     /// # Returns
     /// * `AnyResult<(), AnyError>` - Ok on success, or an error if the element already
-    ///   has attributes.
+    ///   has attributes or an attribute uses an undeclared namespace alias.
     pub fn set_attribute_mut(&mut self, attributes: Vec<XmlAttribute>) -> AnyResult<(), AnyError> {
         // Only allow setting when there are no existing attributes
         if self.attributes.is_some() {
@@ -203,10 +287,13 @@ impl XmlElement {
             ));
         }
         // Validate attribute NS
-        if !attributes
-            .iter()
-            .all(|attribute| attribute.is_valid_ns_alias(self.namespace_context.clone()))
-        {
+        let attributes_valid = {
+            let namespace = self.namespace_context.borrow();
+            attributes
+                .iter()
+                .all(|attribute| attribute.is_valid_ns_alias(&namespace))
+        };
+        if !attributes_valid {
             warn!(
                 "draviavemal-xml_rs::Rejected set_attribute on element node {}: an attribute uses an undeclared namespace alias",
                 self.id
@@ -227,26 +314,10 @@ impl XmlElement {
         Ok(())
     }
 
-    /// Clear all attributes of this element.
-    ///
-    /// # Returns
-    /// * `AnyResult<u32, AnyError>` - The number of attributes that were removed.
-    pub fn clear_attribute_mut(&mut self) -> AnyResult<u32, AnyError> {
-        let removed_count = self.attributes.iter().flatten().count() as u32;
-        if let Some(attributes) = &self.attributes {
-            let mut namespace_context = self.namespace_context.borrow_mut();
-            for attribute in attributes {
-                if let Some(alias) = attribute.get_ns_alias() {
-                    namespace_context.decrement_alias_use_mut(alias);
-                }
-            }
-        }
-        self.attributes = None;
-        Ok(removed_count)
-    }
-
     /// Removes an attribute by its local name.
-    /// Caution: This method does not consider namespaces. If multiple attributes share the same local name but different namespaces, all will be removed.
+    ///
+    /// Caution: This method does not consider namespaces. If multiple attributes share the
+    /// same local name but different namespaces, all of them are removed.
     ///
     /// # Arguments
     /// * `name` - The local name of the attribute to remove.
@@ -284,6 +355,28 @@ impl XmlElement {
         }
     }
 
+    /// Clears all attributes of this element.
+    ///
+    /// # Returns
+    /// * `AnyResult<u32, AnyError>` - The number of attributes that were removed.
+    pub fn clear_attribute_mut(&mut self) -> AnyResult<u32, AnyError> {
+        let removed_count = self.attributes.iter().flatten().count() as u32;
+        if let Some(attributes) = &self.attributes {
+            let mut namespace_context = self.namespace_context.borrow_mut();
+            for attribute in attributes {
+                if let Some(alias) = attribute.get_ns_alias() {
+                    namespace_context.decrement_alias_use_mut(alias);
+                }
+            }
+        }
+        self.attributes = None;
+        Ok(removed_count)
+    }
+
+    // =====================================================================
+    //  SHARED — content mutation (namespace independent)
+    // =====================================================================
+
     /// Gets a mutable reference to the contents collection.
     ///
     /// # Returns
@@ -296,6 +389,9 @@ impl XmlElement {
     ///
     /// # Arguments
     /// * `text` - The text content to add.
+    ///
+    /// # Returns
+    /// * `AnyResult<(), AnyError>` - Ok on success, or an error if the content could not be stored.
     pub fn add_text_mut(&mut self, text: &str) -> AnyResult<(), AnyError> {
         self.add_child_content_mut(XmlElementContentType::Text(text.to_owned()))?;
         Ok(())
@@ -303,17 +399,15 @@ impl XmlElement {
 
     /// Adds a comment node to this element's contents.
     ///
-    /// This method allows you to insert XML comments (`<!-- comment -->`) into the element.
-    /// Comments are preserved during serialization and can be used for documentation
-    /// or to temporarily disable parts of the XML.
+    /// This method inserts XML comments (`<!-- comment -->`) into the element. Comments are
+    /// preserved during serialization and can be used for documentation or to temporarily
+    /// disable parts of the XML.
     ///
     /// # Arguments
     /// * `comment` - The comment text to add (without the `<!--` and `-->` delimiters).
     ///
     /// # Returns
-    /// * `AnyResult<&mut XmlElement, AnyError>` - A mutable reference to self for method chaining,
-    ///   or an error if adding the comment failed.
-    ///
+    /// * `AnyResult<(), AnyError>` - Ok on success, or an error if the content could not be stored.
     pub fn add_comments_mut(&mut self, comment: &str) -> AnyResult<(), AnyError> {
         self.add_child_content_mut(XmlElementContentType::Comment(comment.to_owned()))?;
         Ok(())
@@ -321,9 +415,131 @@ impl XmlElement {
 }
 
 impl XmlElement {
-    // --------------------------
-    // pub self methods
-    // --------------------------
+    // =====================================================================
+    //  RECOMMENDED — namespace-aware, read API (robust, preferred)
+    // =====================================================================
+    // Look up attributes and aliases by namespace URI, so results are independent of the
+    // prefix a document happens to use. Prefer these over the raw-name getters below.
+
+    /// Retrieves an attribute by namespace declaration and local name.
+    ///
+    /// Matches by resolving each prefixed attribute's alias to its URI, so the lookup is
+    /// independent of the alias actually used in the document.
+    ///
+    /// # Arguments
+    /// * `declaration` - The namespace declaration whose URI identifies the attribute.
+    /// * `local_name` - The attribute local name without prefix.
+    ///
+    /// # Returns
+    /// * `Option<&XmlAttribute>` - A reference to the attribute if found, or None.
+    pub fn get_attribute_by_ns(
+        &self,
+        declaration: &NamespaceDeclaration,
+        local_name: &str,
+    ) -> Option<&XmlAttribute> {
+        self.get_attribute_by_uri(declaration.uri, local_name)
+    }
+
+    /// Retrieves an attribute by its namespace URI and local name.
+    ///
+    /// Resolves each prefixed attribute's alias against the element's namespace context
+    /// and compares the resolved URI, making this alias-independent.
+    ///
+    /// # Arguments
+    /// * `uri` - The namespace URI the attribute must resolve to.
+    /// * `local_name` - The attribute local name without prefix.
+    ///
+    /// # Returns
+    /// * `Option<&XmlAttribute>` - A reference to the attribute if found, or None.
+    pub fn get_attribute_by_uri(&self, uri: &str, local_name: &str) -> Option<&XmlAttribute> {
+        let ctx = self.namespace_context.borrow();
+        self.attributes.as_ref()?.iter().find(|attr| {
+            attr.get_name() == local_name
+                && attr
+                    .get_ns_alias()
+                    .and_then(|alias| ctx.get_url(alias))
+                    .map(|(resolved, _)| resolved == uri)
+                    .unwrap_or(false)
+        })
+    }
+
+    /// Returns the namespace alias currently in scope for the given URI, if any.
+    ///
+    /// # Arguments
+    /// * `uri` - The namespace URI to look up.
+    ///
+    /// # Returns
+    /// * `Option<String>` - The in-scope alias bound to `uri`, or None when it is not declared.
+    pub fn get_alias_for_uri(&self, uri: &str) -> Option<String> {
+        self.namespace_context.borrow().get_alias(uri).cloned()
+    }
+
+    /// Resolves the alias a namespace declaration would use in this element's scope.
+    ///
+    /// Read-only counterpart to [`XmlElement::resolve_alias_mut`]: applies the precedence
+    /// `alias_override` > alias already bound to the URI > `default_alias` without mutating
+    /// the namespace context, so it never declares a missing binding.
+    ///
+    /// # Arguments
+    /// * `declaration` - The namespace declaration describing the URI and preferred alias.
+    ///
+    /// # Returns
+    /// * `String` - The alias that resolution selects for the declaration's URI.
+    pub fn resolve_alias(&self, declaration: &NamespaceDeclaration) -> String {
+        declaration.resolve_in(&self.namespace_context.borrow()).0
+    }
+
+    // =====================================================================
+    //  DEVELOPER HACK — direct name lookups (maximum flexibility)
+    // =====================================================================
+    // These match on the raw name/prefix and are alias-sensitive. Handy when the exact
+    // prefix is known, but brittle across documents that use a different alias for the URI.
+
+    /// Retrieves an attribute by its local name, ignoring namespaces.
+    ///
+    /// The first attribute whose local name matches is returned regardless of its prefix.
+    ///
+    /// # Recommendation
+    /// For namespaced attributes prefer [`XmlElement::get_attribute_by_ns`], which matches by
+    /// URI and is unaffected by which alias the document uses.
+    ///
+    /// # Arguments
+    /// * `name` - The local name of the attribute to retrieve.
+    ///
+    /// # Returns
+    /// * `Option<&XmlAttribute>` - A reference to the attribute if found, or None.
+    pub fn get_attribute(&self, name: &str) -> Option<&XmlAttribute> {
+        if let Some(attributes) = self.attributes.as_ref() {
+            attributes.iter().find(|item| item.get_name() == name)
+        } else {
+            None
+        }
+    }
+
+    /// Retrieves an attribute by its exact namespaced name.
+    ///
+    /// Matches the stored `prefix:local` string literally, so it only finds the attribute
+    /// when the document uses the same alias.
+    ///
+    /// # Recommendation
+    /// Prefer [`XmlElement::get_attribute_by_ns`], which matches by URI and tolerates any alias.
+    ///
+    /// # Arguments
+    /// * `name_ns` - The namespaced name of the attribute to retrieve (e.g., "ns:attr").
+    ///
+    /// # Returns
+    /// * `Option<&XmlAttribute>` - A reference to the attribute if found, or None.
+    pub fn get_attribute_ns(&self, name_ns: &str) -> Option<&XmlAttribute> {
+        if let Some(attributes) = self.attributes.as_ref() {
+            attributes.iter().find(|item| item.get_ns_name() == name_ns)
+        } else {
+            None
+        }
+    }
+
+    // =====================================================================
+    //  SHARED — neutral read / query (namespace independent)
+    // =====================================================================
 
     /// Gets the unique node ID of this element.
     ///
@@ -341,7 +557,7 @@ impl XmlElement {
         self.parent_id
     }
 
-    /// Gets the tag name of this element (without namespace).
+    /// Gets the tag name of this element without its namespace prefix.
     ///
     /// # Returns
     /// * `String` - The local tag name without any namespace prefix.
@@ -349,7 +565,7 @@ impl XmlElement {
         self.tag.clone()
     }
 
-    /// Gets the tag name with namespace alias if present.
+    /// Gets the tag name of this element with its namespace alias if present.
     ///
     /// # Returns
     /// * `String` - The namespaced tag name (e.g., "ns:tag") or just the tag if no namespace.
@@ -360,61 +576,10 @@ impl XmlElement {
         }
     }
 
-    /// Retrieves an attribute by its local name.
-    ///
-    /// # Arguments
-    /// * `name` - The local name of the attribute to retrieve.
+    /// Retrieves all attribute local names, without namespace prefixes.
     ///
     /// # Returns
-    /// * `Option<&XmlAttribute>` - A reference to the attribute if found, or None.
-    pub fn get_attribute(&self, name: &str) -> Option<&XmlAttribute> {
-        if let Some(attributes) = self.attributes.as_ref() {
-            attributes.iter().find(|item| item.get_name() == name)
-        } else {
-            None
-        }
-    }
-
-    /// Retrieves an attribute by its namespaced name.
-    ///
-    /// # Arguments
-    /// * `name_ns` - The namespaced name of the attribute to retrieve (e.g., "ns:attr").
-    ///
-    /// # Returns
-    /// * `Option<&XmlAttribute>` - A reference to the attribute if found, or None.
-    pub fn get_attribute_ns(&self, name_ns: &str) -> Option<&XmlAttribute> {
-        if let Some(attributes) = self.attributes.as_ref() {
-            attributes.iter().find(|item| item.get_ns_name() == name_ns)
-        } else {
-            None
-        }
-    }
-
-    /// Retrieves an attribute by its namespace URI and local name.
-    ///
-    /// Resolves each prefixed attribute's alias against the element's namespace context
-    /// and compares the resolved URI, making this alias-independent.
-    pub fn get_attribute_by_uri(&self, uri: &str, local_name: &str) -> Option<&XmlAttribute> {
-        let ctx = self.namespace_context.borrow();
-        self.attributes.as_ref()?.iter().find(|attr| {
-            attr.get_name() == local_name
-                && attr
-                    .get_ns_alias()
-                    .and_then(|alias| ctx._get_url(alias))
-                    .map(|(resolved, _)| resolved == uri)
-                    .unwrap_or(false)
-        })
-    }
-
-    /// Returns the namespace alias currently in scope for the given URI, if any.
-    pub fn get_alias_for_uri(&self, uri: &str) -> Option<String> {
-        self.namespace_context.borrow()._get_alias(uri).cloned()
-    }
-
-    /// Retrives all attribute keys without namespace
-    ///
-    /// # Returns
-    /// * `Option<Vec<String>>` - A reference to the attribute if found, or None.
+    /// * `Option<Vec<String>>` - The local names, or None if the element has no attributes.
     pub fn get_attribute_keys(&self) -> Option<Vec<String>> {
         if let Some(attributes) = self.attributes.as_ref() {
             Some(
@@ -428,10 +593,10 @@ impl XmlElement {
         }
     }
 
-    /// Retrives all attribute keys with namespace
+    /// Retrieves all attribute names including their namespace prefixes.
     ///
     /// # Returns
-    /// * `Option<Vec<String>>` - A reference to the attribute if found, or None.
+    /// * `Option<Vec<String>>` - The namespaced names, or None if the element has no attributes.
     pub fn get_attribute_ns_keys(&self) -> Option<Vec<String>> {
         if let Some(attributes) = self.attributes.as_ref() {
             Some(
@@ -453,7 +618,7 @@ impl XmlElement {
         &self.child_contents
     }
 
-    /// Gets the count of child elements.
+    /// Gets the count of child elements, excluding text and comment nodes.
     ///
     /// # Returns
     /// * `AnyResult<u32, AnyError>` - The count of child elements, or an error if the contents are not accessible.
@@ -471,10 +636,10 @@ impl XmlElement {
         Ok(count)
     }
 
-    /// Finds the first child element with the given tag name.
+    /// Finds the first child element with the given local tag name.
     ///
     /// # Arguments
-    /// * `tag` - The tag name to search for.
+    /// * `tag` - The local tag name to search for.
     ///
     /// # Returns
     /// * `Option<NodeId>` - The NodeId of the first matching child, or None if not found.
@@ -491,10 +656,10 @@ impl XmlElement {
             })
     }
 
-    /// Finds the first child element with the given tag name.
+    /// Finds the first child element with the given namespaced tag name.
     ///
     /// # Arguments
-    /// * `tag_ns` - The tag name to search for with nsmaespace.
+    /// * `tag_ns` - The namespaced tag name to search for (e.g., "ns:tag").
     ///
     /// # Returns
     /// * `Option<NodeId>` - The NodeId of the first matching child, or None if not found.
@@ -513,10 +678,10 @@ impl XmlElement {
             })
     }
 
-    /// Finds all child elements with the given tag name.
+    /// Finds all child elements with the given local tag name.
     ///
     /// # Arguments
-    /// * `tag` - The tag name to search for.
+    /// * `tag` - The local tag name to search for.
     ///
     /// # Returns
     /// * `Option<Vec<NodeId>>` - A vector of matching child NodeIds, or None if none found.
@@ -542,10 +707,10 @@ impl XmlElement {
         }
     }
 
-    /// Finds all child elements with the given tag name.
+    /// Finds all child elements with the given namespaced tag name.
     ///
     /// # Arguments
-    /// * `tag_ns` - The tag name to search for.
+    /// * `tag_ns` - The namespaced tag name to search for (e.g., "ns:tag").
     ///
     /// # Returns
     /// * `Option<Vec<NodeId>>` - A vector of matching child NodeIds, or None if none found.
@@ -573,10 +738,11 @@ impl XmlElement {
         }
     }
 
-    /// Get the Text value of the element if exist else return none
+    /// Gets the text value of the element if present, else None.
     ///
     /// # Returns
-    /// * `AnyResult<Option<String>, AnyError>` - Result chain to read just string value of element
+    /// * `AnyResult<Option<String>, AnyError>` - The first text node's value, or None when the
+    ///   element has no text content.
     pub fn get_element_text_value(&self) -> AnyResult<Option<String>, AnyError> {
         for content in self
             .get_child_contents()
@@ -869,6 +1035,21 @@ impl XmlElement {
         self.child_contents = None;
     }
 
+    /// Ensures this element owns a namespace scope binding `alias -> uri`.
+    ///
+    /// A shared parent scope is cloned into a private overriding context before the binding
+    /// is added, so declaring a namespace here never leaks to sibling elements.
+    pub(crate) fn ensure_namespace_scope_mut(&mut self, alias: &str, uri: &str) {
+        if !self.ns_context_override {
+            let inherited = (*self.namespace_context.borrow()).clone();
+            self.namespace_context = Rc::new(RefCell::new(inherited));
+            self.ns_context_override = true;
+        }
+        self.namespace_context
+            .borrow_mut()
+            .add_url_alias_mut(alias, uri);
+    }
+
     /// Adds content (child, text, or comment) to this element.
     ///
     /// # Arguments
@@ -1097,13 +1278,16 @@ impl XmlElement {
             };
 
             // Validate attribute NS
-            if filtered_attributes.is_some()
-                && !filtered_attributes
-                    .as_ref()
-                    .context("draviavemal-xml_rs::Failed to read attribute")?
-                    .iter()
-                    .all(|attribute| attribute.is_valid_ns_alias(namespace_context.clone()))
-            {
+            let attributes_valid = match filtered_attributes.as_ref() {
+                Some(attributes) => {
+                    let namespace = namespace_context.borrow();
+                    attributes
+                        .iter()
+                        .all(|attribute| attribute.is_valid_ns_alias(&namespace))
+                }
+                None => true,
+            };
+            if !attributes_valid {
                 warn!("draviavemal-xml_rs::Rejected element <{}>: an attribute uses an undeclared namespace alias", new_tag);
                 return Err(AnyError::msg(
                     "draviavemal-xml_rs::Attribute in new tag namespace alias used without refering schema",

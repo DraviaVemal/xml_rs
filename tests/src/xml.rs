@@ -1,7 +1,8 @@
 #[cfg(test)]
 mod xml_test {
     use draviavemal_xml_rs::{
-        XmlAttribute, XmlDeserializer, XmlDocument, XmlElementContentType, XmlSerializer,
+        NamespaceDeclaration, XmlAttribute, XmlDeserializer, XmlDocument, XmlElementContentType,
+        XmlSerializer,
     };
 
     /// Test data for common XML test cases
@@ -1113,5 +1114,127 @@ mod xml_test {
             .get_alias_for_uri("http://relationships")
             .expect("alias should be in scope via inheritance");
         assert_eq!(alias, "r");
+    }
+
+    // --- NamespaceDeclaration driven API tests ---
+
+    const DRAWINGML_NS: NamespaceDeclaration =
+        NamespaceDeclaration::new("http://drawingml", "a");
+    const RELATIONSHIPS_NS: NamespaceDeclaration =
+        NamespaceDeclaration::new("http://relationships", "r");
+
+    #[test]
+    fn ns_decl_root_emits_declaration() {
+        let mut document = XmlDocument::new();
+        document
+            .create_root_element_ns_mut(&DRAWINGML_NS, "wsDr", None)
+            .expect("failed to create ns root");
+        let xml = String::from_utf8(
+            XmlSerializer::xml_tree_to_vec(&mut document).expect("serialize failed"),
+        )
+        .unwrap();
+        assert!(xml.contains("<a:wsDr"), "root should use default alias");
+        assert!(
+            xml.contains("xmlns:a=\"http://drawingml\""),
+            "root should declare the namespace"
+        );
+    }
+
+    #[test]
+    fn ns_decl_child_reuses_in_scope_alias() {
+        let mut document = XmlDocument::new();
+        let root_id = document
+            .create_root_element_ns_mut(&DRAWINGML_NS, "wsDr", None)
+            .unwrap();
+        document
+            .append_child_element_ns_mut(root_id, &DRAWINGML_NS, "blip", None)
+            .expect("failed to append ns child");
+        let xml = String::from_utf8(
+            XmlSerializer::xml_tree_to_vec(&mut document).expect("serialize failed"),
+        )
+        .unwrap();
+        assert!(xml.contains("<a:blip"), "child should reuse in-scope alias");
+        assert_eq!(
+            xml.matches("xmlns:a=").count(),
+            1,
+            "namespace must be declared only once at the root"
+        );
+    }
+
+    #[test]
+    fn ns_decl_child_auto_declares_missing_namespace() {
+        let mut document = XmlDocument::new();
+        let root_id = document
+            .create_root_element_ns_mut(&DRAWINGML_NS, "wsDr", None)
+            .unwrap();
+        document
+            .append_child_element_ns_mut(root_id, &RELATIONSHIPS_NS, "child", None)
+            .expect("failed to append child with new namespace");
+        let xml = String::from_utf8(
+            XmlSerializer::xml_tree_to_vec(&mut document).expect("serialize failed"),
+        )
+        .unwrap();
+        assert!(xml.contains("<r:child"), "child should use default alias");
+        assert!(
+            xml.contains("xmlns:r=\"http://relationships\""),
+            "missing namespace should be declared on the child"
+        );
+    }
+
+    #[test]
+    fn ns_decl_override_forces_alias() {
+        let overridden = NamespaceDeclaration::with_override("http://drawingml", "a", "draw");
+        let mut document = XmlDocument::new();
+        let root_id = document
+            .create_root_element_ns_mut(&DRAWINGML_NS, "wsDr", None)
+            .unwrap();
+        let alias = document
+            .resolve_alias_mut(root_id, &overridden)
+            .expect("resolve failed");
+        assert_eq!(alias, "draw", "override must win over the in-scope alias");
+    }
+
+    #[test]
+    fn ns_decl_add_attribute_reuses_and_declares() {
+        let mut document = XmlDocument::new();
+        let root_id = document
+            .create_root_element_ns_mut(&DRAWINGML_NS, "wsDr", None)
+            .unwrap();
+        let blip_id = document
+            .append_child_element_ns_mut(root_id, &DRAWINGML_NS, "blip", None)
+            .unwrap();
+        // Relationships namespace is not in scope; adding the attribute must declare it here.
+        document
+            .get_element_mut(blip_id)
+            .unwrap()
+            .add_attribute_ns_mut(&RELATIONSHIPS_NS, "embed", "rId5")
+            .expect("failed to add namespaced attribute");
+
+        let found = document
+            .get_element(blip_id)
+            .unwrap()
+            .get_attribute_by_ns(&RELATIONSHIPS_NS, "embed")
+            .expect("attribute should be retrievable by namespace");
+        assert_eq!(found.get_value(), "rId5");
+
+        let xml = String::from_utf8(
+            XmlSerializer::xml_tree_to_vec(&mut document).expect("serialize failed"),
+        )
+        .unwrap();
+        assert!(xml.contains("r:embed=\"rId5\""), "attribute should serialize with alias");
+        assert!(
+            xml.contains("xmlns:r=\"http://relationships\""),
+            "attribute namespace should be declared on the blip element"
+        );
+    }
+
+    #[test]
+    fn ns_decl_resolve_alias_read_only() {
+        let mut document = XmlDocument::new();
+        let root_id = document
+            .create_root_element_ns_mut(&DRAWINGML_NS, "wsDr", None)
+            .unwrap();
+        assert_eq!(document.resolve_alias(root_id, &DRAWINGML_NS).unwrap(), "a");
+        assert_eq!(document.resolve_alias(root_id, &RELATIONSHIPS_NS).unwrap(), "r");
     }
 }
