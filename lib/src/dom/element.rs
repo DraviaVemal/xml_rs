@@ -1044,6 +1044,9 @@ impl XmlElement {
             let inherited = (*self.namespace_context.borrow()).clone();
             self.namespace_context = Rc::new(RefCell::new(inherited));
             self.ns_context_override = true;
+            self.namespace_context
+                .borrow_mut()
+                .clear_local_declarations_mut();
         }
         self.namespace_context
             .borrow_mut()
@@ -1157,9 +1160,22 @@ impl XmlElement {
         self.ns_context_override
     }
 
-    /// Returns a reference to the namespace context for this element.
-    pub(crate) fn get_namespace_context(&self) -> Rc<RefCell<XmlNamespace>> {
-        self.namespace_context.clone()
+    /// Returns the aliases declared directly on this element with their URIs, in declaration order.
+    pub(crate) fn get_local_namespace_declarations(&self) -> Vec<(String, String)> {
+        self.namespace_context.borrow().get_local_declarations()
+    }
+
+    /// Returns the namespace alias applied to this element's tag, if any.
+    pub(crate) fn get_tag_alias(&self) -> Option<&str> {
+        self.ns_alias.as_deref()
+    }
+
+    /// Resolves an alias to its URI using this element's in-scope bindings.
+    pub(crate) fn resolve_alias_to_uri(&self, alias: &str) -> Option<String> {
+        self.namespace_context
+            .borrow()
+            .get_url(alias)
+            .map(|(uri, _)| uri.clone())
     }
 
     /// Releases this element's namespace usage counts from its scope when detached.
@@ -1238,6 +1254,7 @@ impl XmlElement {
                     let inherited = (*namespace_context.borrow()).clone();
                     namespace_context = Rc::new(RefCell::new(inherited));
                     namespace_context.borrow_mut().reset_alias_use_mut();
+                    namespace_context.borrow_mut().clear_local_declarations_mut();
 
                     // Add each namespace declaration to the context
                     for namespace in namespaces {

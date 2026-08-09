@@ -5,6 +5,7 @@
  * - Commercial use requires a separate license.
  */
 
+mod namespace_optimizer;
 mod xml_deserializer;
 mod xml_serializer;
 
