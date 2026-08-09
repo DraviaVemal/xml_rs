@@ -115,10 +115,14 @@ impl XmlDeserializer {
                         .map(|char| String::from_utf8_lossy(&char).to_string())
                         .unwrap_or_default();
 
-                    // Extract and set encoding information, defaulting to utf-8
+                    // Extract encoding information, defaulting to utf-8
                     let encoding = match declaration.encoding() {
                         Some(Ok(enc)) => String::from_utf8_lossy(&enc).to_string(),
                         _ => "utf-8".to_string(),
+                    };
+                    let standalone = match declaration.standalone() {
+                        Some(Ok(value)) => Some(String::from_utf8_lossy(&value).to_string()),
+                        _ => None,
                     };
                     debug!(
                         "draviavemal-xml_rs::XML declaration parsed: version='{}', encoding='{}'",
@@ -126,6 +130,7 @@ impl XmlDeserializer {
                     );
                     xml_document.set_version_mut(version);
                     xml_document.set_encoding_mut(encoding);
+                    xml_document.set_standalone_mut(standalone);
                 }
 
                 // Process empty elements (self-closing tags)
@@ -194,11 +199,15 @@ impl XmlDeserializer {
                         .unescape()
                         .context("draviavemal-xml_rs::XML Comment parsing error")?
                         .to_string();
-                    xml_document
-                        .get_element_mut(active_xml_element_id)
-                        .context("draviavemal-xml_rs::Getting Target Element for comments Failed")?
-                        .add_child_content_mut(XmlElementContentType::Comment(comment))
-                        .context("draviavemal-xml_rs::Failed to add comments")?;
+                    if root_loaded {
+                        xml_document
+                            .get_element_mut(active_xml_element_id)
+                            .context("draviavemal-xml_rs::Getting Target Element for comments Failed")?
+                            .add_child_content_mut(XmlElementContentType::Comment(comment))
+                            .context("draviavemal-xml_rs::Failed to add comments")?;
+                    } else {
+                        xml_document.add_prolog_comment_mut(comment);
+                    }
                 }
 
                 // Process end of element

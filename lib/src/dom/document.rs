@@ -26,6 +26,10 @@ pub struct XmlDocument {
     version: String,
     /// XML document encoding (Default, "UTF-8")
     encoding: String,
+    /// XML `standalone` declaration value, when present
+    standalone: Option<String>,
+    /// Comments appearing in the prolog, before the root element
+    prolog_comments: Vec<String>,
     /// Counter for assigning unique IDs to nodes
     running_id: NodeId,
     /// Node ID of the root element
@@ -39,6 +43,8 @@ impl Default for XmlDocument {
         XmlDocument {
             version: "1.0".into(),
             encoding: "UTF-8".into(),
+            standalone: None,
+            prolog_comments: Vec::new(),
             running_id: 0,
             root_id: 1,
             xml_element_collection: BTreeMap::new(),
@@ -524,6 +530,22 @@ impl XmlDocument {
         &self.encoding
     }
 
+    /// Gets the XML `standalone` declaration value, if present.
+    ///
+    /// # Returns
+    /// * `Option<&str>` - The standalone value (e.g., "yes"), or None when not declared.
+    pub fn get_standalone(&self) -> Option<&str> {
+        self.standalone.as_deref()
+    }
+
+    /// Gets the comments declared in the prolog, before the root element.
+    ///
+    /// # Returns
+    /// * `&[String]` - The prolog comments in document order.
+    pub fn get_prolog_comments(&self) -> &[String] {
+        &self.prolog_comments
+    }
+
     /// Gets the root element's node ID.
     ///
     /// # Returns
@@ -559,9 +581,10 @@ impl XmlDocument {
         XmlDocument {
             version: self.version.clone(),
             encoding: self.encoding.clone(),
+            standalone: self.standalone.clone(),
+            prolog_comments: self.prolog_comments.clone(),
             running_id: self.running_id,
             root_id: self.root_id,
-            // Clone each element in the collection
             xml_element_collection: self
                 .xml_element_collection
                 .iter()
@@ -824,6 +847,22 @@ impl XmlDocument {
     /// * `encoding` - The encoding string to set (e.g., "UTF-8").
     pub fn set_encoding_mut(&mut self, encoding: String) {
         self.encoding = encoding
+    }
+
+    /// Sets the XML `standalone` declaration value.
+    ///
+    /// # Arguments
+    /// * `standalone` - The standalone value to set (e.g., "yes"), or None to omit it.
+    pub fn set_standalone_mut(&mut self, standalone: Option<String>) {
+        self.standalone = standalone;
+    }
+
+    /// Appends a comment to the document prolog, before the root element.
+    ///
+    /// # Arguments
+    /// * `comment` - The comment text without the `<!--` and `-->` delimiters.
+    pub fn add_prolog_comment_mut(&mut self, comment: String) {
+        self.prolog_comments.push(comment);
     }
 
     /// Removes an element and all its descendants from the document.

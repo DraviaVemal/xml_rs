@@ -126,6 +126,8 @@ pub struct XmlNamespace {
     url_alias: HashMap<NsUrl, NsAlias>,
     /// Maps from namespace URL to alias
     alias_url: HashMap<NsAlias, (NsUrl, u32)>,
+    /// Aliases declared directly on this scope, in declaration order
+    locally_declared_aliases: Vec<NsAlias>,
 }
 
 impl XmlNamespace {
@@ -156,6 +158,14 @@ impl XmlNamespace {
         );
         self.alias_url.insert(alias.to_owned(), (url.to_owned(), 0));
         self.url_alias.insert(url.to_owned(), alias.to_owned());
+        if !self.locally_declared_aliases.iter().any(|declared_alias| declared_alias == alias) {
+            self.locally_declared_aliases.push(alias.to_owned());
+        }
+    }
+
+    /// Clears the record of aliases declared directly on this scope.
+    pub(crate) fn clear_local_declarations_mut(&mut self) {
+        self.locally_declared_aliases.clear();
     }
 
     /// Adds a namespace from an XML attribute (usually an xmlns attribute).
@@ -243,9 +253,16 @@ impl XmlNamespace {
         self.url_alias.get(url)
     }
 
-    /// Returns a reference to the namespace context for this element.
-    pub(crate) fn get_namespace_alias_url(&self) -> &HashMap<NsAlias, (NsUrl, u32)> {
-        &self.alias_url
+    /// Returns the aliases declared directly on this scope with their URIs, in declaration order.
+    pub(crate) fn get_local_declarations(&self) -> Vec<(NsAlias, NsUrl)> {
+        self.locally_declared_aliases
+            .iter()
+            .filter_map(|alias| {
+                self.alias_url
+                    .get(alias)
+                    .map(|(url, _)| (alias.clone(), url.clone()))
+            })
+            .collect()
     }
 }
 
@@ -262,6 +279,7 @@ impl XmlNamespace {
         XmlNamespace {
             url_alias: HashMap::new(),
             alias_url: HashMap::new(),
+            locally_declared_aliases: Vec::new(),
         }
     }
 }

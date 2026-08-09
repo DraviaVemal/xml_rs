@@ -1,40 +1,190 @@
 #[cfg(test)]
 mod xml_test {
     use draviavemal_xml_rs::{
-        NamespaceDeclaration, XmlAttribute, XmlDeserializer, XmlDocument, XmlElementContentType,
-        XmlSerializer,
+        NamespaceDeclaration, SerializeOptions, XmlAttribute, XmlDeserializer, XmlDocument,
+        XmlElementContentType, XmlSerializer,
     };
 
     /// Test data for common XML test cases
     fn get_test_xml() -> &'static str {
         r#"
-        <test:catalog xmlns:test="http://example.org/test">
-            <!-- This is Test Content 1 -->
-            <!-- This is Test Content 2 -->
-            <book id="bk101">
-                <author>John Doe</author>
-                <title>XML Basics</title>
-                <genre>Programming</genre>
-                <price>29.95</price>
-                <empty/>
-                <newempty attr1="value" attr2="value2"/>
-                <publish_date>
-                    <date>01</date>
-                    <month>01</month>
-                    <year>2024</year>
-                </publish_date>
-                <description>An introduction to XML.</description>
-            </book>
-            <book id="bk102">
-                <author>Jane Smith</author>
-                <title>Advanced XML</title>
-                <genre>Programming</genre>
-                <price>39.95</price>
-                <publish_date>2024-06-02</publish_date>
-                <description>Deep dive into XML technologies.</description>
-            </book>
-        </test:catalog>
+        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+        <!-- This is Test Content 1 -->
+        <!-- This is Test Content 2 -->
+        <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="x15 xr xr6 xr10 xr2" xmlns:x15="http://schemas.microsoft.com/office/spreadsheetml/2010/11/main" xmlns:xr="http://schemas.microsoft.com/office/spreadsheetml/2014/revision" xmlns:xr6="http://schemas.microsoft.com/office/spreadsheetml/2016/revision6" xmlns:xr10="http://schemas.microsoft.com/office/spreadsheetml/2016/revision10" xmlns:xr2="http://schemas.microsoft.com/office/spreadsheetml/2015/revision2">
+        <fileVersion appName="xl" lastEdited="7" lowestEdited="7" rupBuild="28827"/>
+            <!-- This is Test Content 3 -->
+            <!-- This is Test Content 4 -->
+        <workbookPr defaultThemeVersion="166925"/>
+        <mc:AlternateContent xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">
+            <mc:Choice Requires="x15">
+            <x15ac:absPath url="https://medtronicapac-my.sharepoint.com/personal/md10_medtronic_com/Documents/Desktop/" xmlns:x15ac="http://schemas.microsoft.com/office/spreadsheetml/2010/11/ac"/>
+            </mc:Choice>
+        </mc:AlternateContent>
+        <xr:revisionPtr revIDLastSave="21" documentId="13_ncr:1_{A17606B1-6AE4-4585-A1ED-53244B14AA1A}" xr6:coauthVersionLast="47" xr6:coauthVersionMax="47" xr10:uidLastSave="{C4F19BA3-024F-4648-B4F0-8FB9AB5DD2C8}"/>
+        <bookViews>
+            <workbookView xWindow="28680" yWindow="-120" windowWidth="29040" windowHeight="15720" activeTab="2" xr2:uid="{55A69094-CFF0-4A24-937F-3F8966A07938}"/>
+        </bookViews>
+        <sheets>
+            <sheet name="Style" sheetId="1" r:id="rId1"/>
+            <sheet name="formula" sheetId="2" r:id="rId2"/>
+            <sheet name="image" sheetId="3" r:id="rId3"/>
+        </sheets>
+        <calcPr calcId="191029"/>
+        <extLst>
+            <ext uri="{140A7094-0E35-4892-8432-C4D2E57EDEB5}" xmlns:x15="http://schemas.microsoft.com/office/spreadsheetml/2010/11/main">
+            <x15:workbookPr chartTrackingRefBase="1"/>
+            </ext>
+            <ext uri="{B58B0392-4F1F-4190-BB64-5DF3571DCE5F}" xmlns:xcalcf="http://schemas.microsoft.com/office/spreadsheetml/2018/calcfeatures">
+            <xcalcf:calcFeatures>
+                <xcalcf:feature name="microsoft.com:RD"/>
+                <xcalcf:feature name="microsoft.com:Single"/>
+                <xcalcf:feature name="microsoft.com:FV"/>
+                <xcalcf:feature name="microsoft.com:CNMTM"/>
+                <xcalcf:feature name="microsoft.com:LET_WF"/>
+            </xcalcf:calcFeatures>
+            </ext>
+        </extLst>
+        </workbook>
     "#
+    }
+
+    fn split_tag_attributes(attribute_region: &str) -> Vec<String> {
+        let characters: Vec<char> = attribute_region.chars().collect();
+        let mut attributes = Vec::new();
+        let mut index = 0;
+        while index < characters.len() {
+            while index < characters.len() && characters[index].is_whitespace() {
+                index += 1;
+            }
+            if index >= characters.len() || characters[index] == '/' {
+                break;
+            }
+            let name_start = index;
+            while index < characters.len() && characters[index] != '=' {
+                index += 1;
+            }
+            if index >= characters.len() {
+                break;
+            }
+            let name: String = characters[name_start..index].iter().collect();
+            index += 1;
+            let quote = characters[index];
+            index += 1;
+            let value_start = index;
+            while index < characters.len() && characters[index] != quote {
+                index += 1;
+            }
+            let value: String = characters[value_start..index].iter().collect();
+            index += 1;
+            attributes.push(format!("{}={}{}{}", name.trim(), quote, value, quote));
+        }
+        attributes.sort();
+        attributes
+    }
+
+    fn normalize_markup(chunk: &str) -> String {
+        if chunk.starts_with("<!") || chunk.starts_with("<?") {
+            return chunk.to_string();
+        }
+        let inner = &chunk[1..chunk.len().saturating_sub(1)];
+        if inner.starts_with('/') {
+            return chunk.to_string();
+        }
+        let self_closing = inner.ends_with('/');
+        let inner_trimmed = inner.trim_end_matches('/');
+        let name_end = inner_trimmed
+            .find(char::is_whitespace)
+            .unwrap_or(inner_trimmed.len());
+        let name = &inner_trimmed[..name_end];
+        let attributes = split_tag_attributes(&inner_trimmed[name_end..]);
+        let mut rebuilt = String::from("<");
+        rebuilt.push_str(name);
+        for attribute in attributes {
+            rebuilt.push(' ');
+            rebuilt.push_str(&attribute);
+        }
+        if self_closing {
+            rebuilt.push('/');
+        }
+        rebuilt.push('>');
+        rebuilt
+    }
+
+    fn canonicalize(input: &str) -> String {
+        let characters: Vec<char> = input.chars().collect();
+        let mut result = String::new();
+        let mut index = 0;
+        while index < characters.len() {
+            if characters[index] == '<' {
+                let mut end = index;
+                let mut inside_quote = false;
+                while end < characters.len() {
+                    let current = characters[end];
+                    if current == '"' {
+                        inside_quote = !inside_quote;
+                    }
+                    if current == '>' && !inside_quote {
+                        break;
+                    }
+                    end += 1;
+                }
+                let chunk: String = characters[index..=end.min(characters.len() - 1)]
+                    .iter()
+                    .collect();
+                result.push_str(&normalize_markup(&chunk));
+                index = end + 1;
+            } else {
+                result.push(characters[index]);
+                index += 1;
+            }
+        }
+        result.chars().filter(|c| !c.is_whitespace()).collect()
+    }
+
+    fn first_divergence(original: &str, modified: &str) -> Option<(usize, String, String)> {
+        let original_significant: Vec<char> = original.chars().collect();
+        let modified_significant: Vec<char> = modified.chars().collect();
+        let shorter_length = original_significant.len().min(modified_significant.len());
+        let mut index = 0;
+        while index < shorter_length
+            && original_significant[index] == modified_significant[index]
+        {
+            index += 1;
+        }
+        if index == original_significant.len() && index == modified_significant.len() {
+            return None;
+        }
+        let context_start = index.saturating_sub(40);
+        let original_window: String = original_significant
+            [context_start..(index + 60).min(original_significant.len())]
+            .iter()
+            .collect();
+        let modified_window: String = modified_significant
+            [context_start..(index + 60).min(modified_significant.len())]
+            .iter()
+            .collect();
+        Some((index, original_window, modified_window))
+    }
+
+    #[test]
+    fn test_xml_roundtrip_string() {
+        let source_content = get_test_xml();
+        let xml_doc = XmlDeserializer::vec_to_xml_doc_tree(source_content.as_bytes().to_vec())
+            .expect("Failed to parse string to document");
+        let xml_vec =
+            XmlSerializer::xml_tree_to_vec(&xml_doc).expect("Failed to parse document to string");
+        let roundtrip_content = String::from_utf8(xml_vec).expect("Failed to conver vec to string");
+        let canonical_source = canonicalize(source_content);
+        let canonical_roundtrip = canonicalize(roundtrip_content.as_str());
+        if let Some((index, original_window, modified_window)) =
+            first_divergence(canonical_source.as_str(), canonical_roundtrip.as_str())
+        {
+            panic!(
+                "Round-trip diverged at character {}\n  source : ...{}\n  output : ...{}",
+                index, original_window, modified_window
+            );
+        }
     }
 
     #[test]
@@ -88,31 +238,28 @@ mod xml_test {
             .get_element(root_id)
             .expect("Failed to get root element");
 
-        // The root should be a "test:catalog" element
-        assert_eq!(root.get_tag(), "catalog", "Root tag should be 'catalog'");
+        assert_eq!(root.get_tag(), "workbook", "Root tag should be 'workbook'");
 
-        // It should have 2 book children
-        let book_ids = document
-            .find_all_child(root_id, "book")
-            .expect("Failed to find books")
-            .expect("No book elements found");
+        let sheets_id = document
+            .find_first_child(root_id, "sheets")
+            .expect("Failed to find sheets")
+            .expect("No sheets element found");
 
-        assert_eq!(book_ids.len(), 2, "Should have 2 book elements");
+        let sheet_ids = document
+            .find_all_child(sheets_id, "sheet")
+            .expect("Failed to find sheets")
+            .expect("No sheet elements found");
 
-        // Get the first book
-        let book1 = document
-            .get_element(book_ids[0])
-            .expect("Failed to get first book");
+        assert_eq!(sheet_ids.len(), 3, "Should have 3 sheet elements");
 
-        // It should have an id attribute
-        if let Some(attr) = book1.get_attribute("id") {
-            assert_eq!(
-                attr.get_value(),
-                "bk101",
-                "First book should have id='bk101'"
-            );
+        let first_sheet = document
+            .get_element(sheet_ids[0])
+            .expect("Failed to get first sheet");
+
+        if let Some(attr) = first_sheet.get_attribute("name") {
+            assert_eq!(attr.get_value(), "Style", "First sheet should have name='Style'");
         } else {
-            panic!("First book should have attributes");
+            panic!("First sheet should have attributes");
         }
     }
 
@@ -127,41 +274,30 @@ mod xml_test {
         // Get the root element
         let root_id = document.get_root_id();
 
-        // Find book with id="bk101"
-        let book_id = document
-            .find_first_by_attribute(root_id, "id", "bk101")
+        let sheets_id = document
+            .find_first_child(root_id, "sheets")
+            .expect("Failed to find sheets")
+            .expect("No sheets element found");
+
+        let sheet_id = document
+            .find_first_by_attribute(sheets_id, "name", "formula")
             .expect("Failed to search for attribute")
-            .expect("No book with id='bk101' found");
+            .expect("No sheet with name='formula' found");
 
-        // Verify it's the right element
-        document
-            .get_element(book_id)
-            .expect("Failed to get book element");
+        let sheet = document
+            .get_element(sheet_id)
+            .expect("Failed to get sheet element");
 
-        // Find the title child
-        let title_id = document
-            .find_first_child(book_id, "title")
-            .expect("Failed to find title")
-            .expect("No title element found");
-
-        let title = document
-            .get_element(title_id)
-            .expect("Failed to get title element");
-
-        // Check the title's content
-        if let Some(contents) = title.get_child_contents() {
-            let has_correct_text = contents.iter().any(|content| {
-                if let XmlElementContentType::Text(text) = content {
-                    text == "XML Basics"
-                } else {
-                    false
-                }
-            });
-
-            assert!(has_correct_text, "Title should contain 'XML Basics'");
-        } else {
-            panic!("Title should have content");
-        }
+        assert_eq!(
+            sheet.get_attribute("sheetId").unwrap().get_value(),
+            "2",
+            "formula sheet should have sheetId='2'"
+        );
+        assert_eq!(
+            sheet.get_attribute("id").unwrap().get_value(),
+            "rId2",
+            "formula sheet should have r:id='rId2'"
+        );
     }
 
     #[test]
@@ -942,7 +1078,8 @@ mod xml_test {
 
         {
             let element_mut = document.get_element_mut(item_element_id).unwrap();
-            let res = element_mut.set_attribute_mut(vec![XmlAttribute::new("x".to_string(), "y".to_string())]);
+            let res = element_mut
+                .set_attribute_mut(vec![XmlAttribute::new("x".to_string(), "y".to_string())]);
             assert!(res.is_err());
         }
 
@@ -1015,7 +1152,8 @@ mod xml_test {
         let tmp_file_path_str = tmp_file_path.to_str().unwrap().to_string();
 
         XmlSerializer::xml_doc_tree_to_file(&mut document, &tmp_file_path_str).expect("write file");
-        let parsed_document = XmlDeserializer::file_to_xml_doc_tree(&tmp_file_path_str).expect("read file");
+        let parsed_document =
+            XmlDeserializer::file_to_xml_doc_tree(&tmp_file_path_str).expect("read file");
         assert!(parsed_document.get_root_id() > 0);
 
         let _ = std::fs::remove_file(&tmp_file_path_str);
@@ -1024,11 +1162,11 @@ mod xml_test {
     // --- URI-based namespace lookup tests ---
 
     #[test]
-    fn get_attribute_by_uri_standard_alias() {
+    fn test_get_attribute_by_uri_standard_alias() {
         // r:embed with xmlns:r on the same element — canonical OOXML blip pattern
         let xml = r#"<root><a:blip xmlns:a="http://drawingml" xmlns:r="http://relationships" r:embed="rId5"/></root>"#;
-        let doc = XmlDeserializer::vec_to_xml_doc_tree(xml.as_bytes().to_vec())
-            .expect("parse failed");
+        let doc =
+            XmlDeserializer::vec_to_xml_doc_tree(xml.as_bytes().to_vec()).expect("parse failed");
         let root_id = doc.get_root_id();
         let blip_id = doc
             .get_element(root_id)
@@ -1043,11 +1181,11 @@ mod xml_test {
     }
 
     #[test]
-    fn get_attribute_by_uri_non_standard_alias() {
+    fn test_get_attribute_by_uri_non_standard_alias() {
         // Same semantics, but the file uses rel: instead of r:
         let xml = r#"<root><a:blip xmlns:a="http://drawingml" xmlns:rel="http://relationships" rel:embed="rId7"/></root>"#;
-        let doc = XmlDeserializer::vec_to_xml_doc_tree(xml.as_bytes().to_vec())
-            .expect("parse failed");
+        let doc =
+            XmlDeserializer::vec_to_xml_doc_tree(xml.as_bytes().to_vec()).expect("parse failed");
         let root_id = doc.get_root_id();
         let blip_id = doc
             .get_element(root_id)
@@ -1062,7 +1200,7 @@ mod xml_test {
     }
 
     #[test]
-    fn get_attribute_by_uri_inherited_alias() {
+    fn test_get_attribute_by_uri_inherited_alias() {
         // xmlns:r declared on parent; child uses r:embed without re-declaring it
         let xml = r#"<root xmlns:r="http://relationships"><child r:id="rId3"/></root>"#;
         let doc = XmlDeserializer::vec_to_xml_doc_tree(xml.as_bytes().to_vec())
@@ -1081,7 +1219,7 @@ mod xml_test {
     }
 
     #[test]
-    fn get_attribute_by_uri_inherited_after_sibling_override() {
+    fn test_get_attribute_by_uri_inherited_after_sibling_override() {
         // Child B declares xmlns:a but should still inherit xmlns:r from parent
         let xml = r#"<root xmlns:r="http://relationships"><blip xmlns:a="http://drawingml" r:embed="rId9"/></root>"#;
         let doc = XmlDeserializer::vec_to_xml_doc_tree(xml.as_bytes().to_vec())
@@ -1100,7 +1238,7 @@ mod xml_test {
     }
 
     #[test]
-    fn get_alias_for_uri_returns_in_scope_alias() {
+    fn test_get_alias_for_uri_returns_in_scope_alias() {
         let xml = r#"<root xmlns:r="http://relationships"><child r:id="rId1"/></root>"#;
         let doc = XmlDeserializer::vec_to_xml_doc_tree(xml.as_bytes().to_vec()).unwrap();
         let root_id = doc.get_root_id();
@@ -1118,13 +1256,12 @@ mod xml_test {
 
     // --- NamespaceDeclaration driven API tests ---
 
-    const DRAWINGML_NS: NamespaceDeclaration =
-        NamespaceDeclaration::new("http://drawingml", "a");
+    const DRAWINGML_NS: NamespaceDeclaration = NamespaceDeclaration::new("http://drawingml", "a");
     const RELATIONSHIPS_NS: NamespaceDeclaration =
         NamespaceDeclaration::new("http://relationships", "r");
 
     #[test]
-    fn ns_decl_root_emits_declaration() {
+    fn test_ns_decl_root_emits_declaration() {
         let mut document = XmlDocument::new();
         document
             .create_root_element_ns_mut(&DRAWINGML_NS, "wsDr", None)
@@ -1141,7 +1278,7 @@ mod xml_test {
     }
 
     #[test]
-    fn ns_decl_child_reuses_in_scope_alias() {
+    fn test_ns_decl_child_reuses_in_scope_alias() {
         let mut document = XmlDocument::new();
         let root_id = document
             .create_root_element_ns_mut(&DRAWINGML_NS, "wsDr", None)
@@ -1162,7 +1299,7 @@ mod xml_test {
     }
 
     #[test]
-    fn ns_decl_child_auto_declares_missing_namespace() {
+    fn test_ns_decl_child_auto_declares_missing_namespace() {
         let mut document = XmlDocument::new();
         let root_id = document
             .create_root_element_ns_mut(&DRAWINGML_NS, "wsDr", None)
@@ -1182,7 +1319,7 @@ mod xml_test {
     }
 
     #[test]
-    fn ns_decl_override_forces_alias() {
+    fn test_ns_decl_override_forces_alias() {
         let overridden = NamespaceDeclaration::with_override("http://drawingml", "a", "draw");
         let mut document = XmlDocument::new();
         let root_id = document
@@ -1195,7 +1332,7 @@ mod xml_test {
     }
 
     #[test]
-    fn ns_decl_add_attribute_reuses_and_declares() {
+    fn test_ns_decl_add_attribute_reuses_and_declares() {
         let mut document = XmlDocument::new();
         let root_id = document
             .create_root_element_ns_mut(&DRAWINGML_NS, "wsDr", None)
@@ -1221,7 +1358,10 @@ mod xml_test {
             XmlSerializer::xml_tree_to_vec(&mut document).expect("serialize failed"),
         )
         .unwrap();
-        assert!(xml.contains("r:embed=\"rId5\""), "attribute should serialize with alias");
+        assert!(
+            xml.contains("r:embed=\"rId5\""),
+            "attribute should serialize with alias"
+        );
         assert!(
             xml.contains("xmlns:r=\"http://relationships\""),
             "attribute namespace should be declared on the blip element"
@@ -1229,12 +1369,97 @@ mod xml_test {
     }
 
     #[test]
-    fn ns_decl_resolve_alias_read_only() {
+    fn test_ns_decl_resolve_alias_read_only() {
         let mut document = XmlDocument::new();
         let root_id = document
             .create_root_element_ns_mut(&DRAWINGML_NS, "wsDr", None)
             .unwrap();
         assert_eq!(document.resolve_alias(root_id, &DRAWINGML_NS).unwrap(), "a");
-        assert_eq!(document.resolve_alias(root_id, &RELATIONSHIPS_NS).unwrap(), "r");
+        assert_eq!(
+            document.resolve_alias(root_id, &RELATIONSHIPS_NS).unwrap(),
+            "r"
+        );
+    }
+
+    #[test]
+    fn test_standalone_declaration_preserved() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><root/>"#;
+        let document = XmlDeserializer::vec_to_xml_doc_tree(xml.as_bytes().to_vec())
+            .expect("parse failed");
+        assert_eq!(document.get_standalone(), Some("yes"));
+        let output = String::from_utf8(
+            XmlSerializer::xml_tree_to_vec(&document).expect("serialize failed"),
+        )
+        .unwrap();
+        assert!(output.contains("standalone=\"yes\""));
+    }
+
+    #[test]
+    fn test_prolog_comments_preserved() {
+        let xml = r#"<!-- first --><!-- second --><root/>"#;
+        let document = XmlDeserializer::vec_to_xml_doc_tree(xml.as_bytes().to_vec())
+            .expect("parse failed");
+        assert_eq!(document.get_prolog_comments().len(), 2);
+        let output = String::from_utf8(
+            XmlSerializer::xml_tree_to_vec(&document).expect("serialize failed"),
+        )
+        .unwrap();
+        assert!(output.contains("<!-- first -->"));
+        assert!(output.contains("<!-- second -->"));
+    }
+
+    #[test]
+    fn test_default_serialization_preserves_unused_namespace() {
+        let xml = r#"<root xmlns:used="http://used" xmlns:unused="http://unused"><used:child/></root>"#;
+        let document = XmlDeserializer::vec_to_xml_doc_tree(xml.as_bytes().to_vec())
+            .expect("parse failed");
+        let output = String::from_utf8(
+            XmlSerializer::xml_tree_to_vec(&document).expect("serialize failed"),
+        )
+        .unwrap();
+        assert!(output.contains("xmlns:unused=\"http://unused\""));
+        assert!(output.contains("xmlns:used=\"http://used\""));
+    }
+
+    #[test]
+    fn test_optimize_drops_unused_namespace() {
+        let xml = r#"<root xmlns:used="http://used" xmlns:unused="http://unused"><used:child/></root>"#;
+        let document = XmlDeserializer::vec_to_xml_doc_tree(xml.as_bytes().to_vec())
+            .expect("parse failed");
+        let optimized = String::from_utf8(
+            XmlSerializer::xml_tree_to_vec_with(
+                &document,
+                &SerializeOptions {
+                    optimize_namespaces: true,
+                },
+            )
+            .expect("serialize failed"),
+        )
+        .unwrap();
+        assert!(!optimized.contains("http://unused"), "unused namespace should be dropped");
+        assert!(optimized.contains("xmlns:used=\"http://used\""), "used namespace should remain");
+    }
+
+    #[test]
+    fn test_optimize_hoists_redeclared_namespace_to_common_ancestor() {
+        let xml = r#"<workbook xmlns="http://main" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="x15" xmlns:x15="http://x15"><extLst><ext xmlns:x15="http://x15"><x15:workbookPr/></ext></extLst></workbook>"#;
+        let document = XmlDeserializer::vec_to_xml_doc_tree(xml.as_bytes().to_vec())
+            .expect("parse failed");
+        let optimized = String::from_utf8(
+            XmlSerializer::xml_tree_to_vec_with(
+                &document,
+                &SerializeOptions {
+                    optimize_namespaces: true,
+                },
+            )
+            .expect("serialize failed"),
+        )
+        .unwrap();
+        assert!(optimized.contains("xmlns:x15=\"http://x15\""));
+        assert_eq!(
+            optimized.matches("xmlns:x15=").count(),
+            1,
+            "the redeclared namespace should collapse to a single declaration"
+        );
     }
 }

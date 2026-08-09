@@ -5,12 +5,32 @@
  * - Commercial use requires a separate license.
  */
 
+use super::namespace_optimizer::NamespaceOptimizer;
 use crate::{log_elapsed, NodeId, XmlDocument, XmlElement, XmlElementContentType};
 use anyhow::{Context, Error as AnyError, Result as AnyResult};
 use log::{debug, error, info, trace};
 use quick_xml::escape::escape;
 use std::collections::HashMap;
 use std::fs;
+
+/// Emission plan mapping a node to the prefixed namespace declarations it must emit.
+pub(crate) type NamespacePlan = HashMap<NodeId, Vec<(String, String)>>;
+
+/// Options controlling how an [`XmlDocument`] is serialized.
+#[derive(Debug, Clone)]
+pub struct SerializeOptions {
+    /// Hoists every namespace declaration to the lowest common ancestor of its uses and
+    /// drops declarations that are never referenced.
+    pub optimize_namespaces: bool,
+}
+
+impl Default for SerializeOptions {
+    fn default() -> Self {
+        Self {
+            optimize_namespaces: false,
+        }
+    }
+}
 
 /// Provides XML serialization utilities for converting `XmlDocument` objects to XML text.
 ///
@@ -34,12 +54,29 @@ impl XmlSerializer {
         xml_document: &XmlDocument,
         file_path: &str,
     ) -> AnyResult<(), AnyError> {
+        Self::xml_doc_tree_to_file_with(xml_document, file_path, &SerializeOptions::default())
+    }
+
+    /// Serializes an XML document tree to a file using the provided options.
+    ///
+    /// # Arguments
+    /// * `xml_document` - The document to serialize.
+    /// * `file_path` - The path where the XML file will be written.
+    /// * `options` - Serialization options controlling namespace optimization.
+    ///
+    /// # Returns
+    /// * `AnyResult<(), AnyError>` - Success or an error.
+    pub fn xml_doc_tree_to_file_with(
+        xml_document: &XmlDocument,
+        file_path: &str,
+        options: &SerializeOptions,
+    ) -> AnyResult<(), AnyError> {
         info!(
             "draviavemal-xml_rs::Serializing XML document to file: {}",
             file_path
         );
         // Convert the document to a byte vector
-        let xml_bytes = Self::xml_tree_to_vec(xml_document)?;
+        let xml_bytes = Self::xml_tree_to_vec_with(xml_document, options)?;
 
         // Write the bytes to the file
         fs::write(file_path, &xml_bytes)
@@ -68,21 +105,39 @@ impl XmlSerializer {
     /// # Returns
     /// * `AnyResult<Vec<u8>, AnyError>` - The serialized XML as bytes, or an error.
     pub fn xml_tree_to_vec(xml_document: &XmlDocument) -> AnyResult<Vec<u8>, AnyError> {
+        Self::xml_tree_to_vec_with(xml_document, &SerializeOptions::default())
+    }
+
+    /// Serializes an XML document tree to a byte vector using the provided options.
+    ///
+    /// # Arguments
+    /// * `xml_document` - The document to serialize.
+    /// * `options` - Serialization options controlling namespace optimization.
+    ///
+    /// # Returns
+    /// * `AnyResult<Vec<u8>, AnyError>` - The serialized XML as bytes, or an error.
+    pub fn xml_tree_to_vec_with(
+        xml_document: &XmlDocument,
+        options: &SerializeOptions,
+    ) -> AnyResult<Vec<u8>, AnyError> {
         debug!("draviavemal-xml_rs::Building XML output string from document tree");
         let mut xml_content = String::default();
 
         // Add XML declaration with conditional behavior based on build mode
         #[cfg(debug_assertions)]
         {
-            // Add XML declaration in debug mode with document's version and encoding
             xml_content.push_str(
                 format!(
-                    "<?xml version=\"{}\" encoding=\"{}\"?>",
+                    "<?xml version=\"{}\" encoding=\"{}\"",
                     xml_document.get_version(),
                     xml_document.get_encoding()
                 )
                 .as_str(),
             );
+            if let Some(standalone) = xml_document.get_standalone() {
+                xml_content.push_str(format!(" standalone=\"{}\"", standalone).as_str());
+            }
+            xml_content.push_str("?>");
         }
 
         #[cfg(not(debug_assertions))]
@@ -101,11 +156,26 @@ impl XmlSerializer {
                 .as_str(),);
         }
 
+        let namespace_plan = if options.optimize_namespaces {
+            Some(
+                NamespaceOptimizer::build_plan(xml_document)
+                    .context("draviavemal-xml_rs::Failed to build namespace optimization plan")?,
+            )
+        } else {
+            None
+        };
+
+        for comment in xml_document.get_prolog_comments() {
+            xml_content.push_str("<!--");
+            xml_content.push_str(comment);
+            xml_content.push_str("-->");
+        }
+
         // Build the XML tree, measuring performance in debug mode
         xml_content.push_str(
             log_elapsed!(
                 || {
-                    Self::build_xml_tree(xml_document)
+                    Self::build_xml_tree(xml_document, namespace_plan.as_ref())
                         .context("draviavemal-xml_rs::Create XML Contact String Failed")
                 },
                 format!("Deserialize File :")
@@ -128,49 +198,58 @@ impl XmlSerializer {
     // private methods
     // --------------------------
 
-    /// Builds the opening tag for an element with its attributes.
+    /// Appends a single `xmlns` declaration to the tag being built.
+    fn push_namespace_declaration(target: &mut String, alias: &str, uri: &str) {
+        target.push_str(" xmlns");
+        if !alias.is_empty() {
+            target.push(':');
+            target.push_str(alias);
+        }
+        target.push_str("=\"");
+        target.push_str(uri);
+        target.push('"');
+    }
+
+    /// Builds the opening tag for an element with its namespace declarations and attributes.
     ///
     /// # Arguments
     /// * `element` - The element to build a tag for.
+    /// * `element_id` - The node ID of the element.
+    /// * `namespace_plan` - When present, prefixed declarations are emitted from this
+    ///   optimization plan instead of the element's own stored declarations.
     ///
     /// # Returns
-    /// * `Result<String, AnyError>` - The formatted tag string with attributes.
+    /// * `Result<String, AnyError>` - The formatted tag string with declarations and attributes.
     fn build_element(
         element: &XmlElement,
-        inherited_ns: &HashMap<String, String>,
-    ) -> Result<(String, Vec<(String, String)>), AnyError> {
+        element_id: NodeId,
+        namespace_plan: Option<&NamespacePlan>,
+    ) -> Result<String, AnyError> {
         let mut element_part = String::default();
-        let mut emitted_ns = Vec::new();
-
         element_part.push_str(&element.get_tag_ns());
 
-        if element.has_namespace() {
-            let namespace_context = element.get_namespace_context();
-            let namespace = namespace_context
-                .try_borrow()
-                .context("draviavemal-xml_rs::Failed to borrow namespace context")?;
-            for (prefix, (uri, usage_count)) in namespace.get_namespace_alias_url().iter() {
-                if *usage_count == 0 {
-                    continue;
+        match namespace_plan {
+            Some(plan) => {
+                for (alias, uri) in element.get_local_namespace_declarations() {
+                    if alias.is_empty() {
+                        Self::push_namespace_declaration(&mut element_part, &alias, &uri);
+                    }
                 }
-                if inherited_ns
-                    .get(prefix)
-                    .map(|bound_uri| bound_uri == uri)
-                    .unwrap_or(false)
-                {
-                    continue;
+                if let Some(declarations) = plan.get(&element_id) {
+                    for (alias, uri) in declarations {
+                        Self::push_namespace_declaration(&mut element_part, alias, uri);
+                    }
                 }
-                element_part.push_str(" xmlns");
-                if !prefix.is_empty() {
-                    element_part.push(':');
-                    element_part.push_str(prefix);
+            }
+            None => {
+                if element.has_namespace() {
+                    for (alias, uri) in element.get_local_namespace_declarations() {
+                        Self::push_namespace_declaration(&mut element_part, &alias, &uri);
+                    }
                 }
-                element_part.push_str("=\"");
-                element_part.push_str(uri);
-                element_part.push('"');
-                emitted_ns.push((prefix.clone(), uri.clone()));
             }
         }
+
         if let Some(attributes) = element.get_attributes() {
             for attribute in attributes {
                 element_part.push(' ');
@@ -187,7 +266,7 @@ impl XmlSerializer {
             }
         }
 
-        Ok((element_part, emitted_ns))
+        Ok(element_part)
     }
 
     /// Recursively builds the XML content for an element and its children.
@@ -195,14 +274,14 @@ impl XmlSerializer {
     /// # Arguments
     /// * `xml_document` - The XML document containing all elements.
     /// * `element_id` - The ID of the element to process.
-    /// * `inherited_ns` - Prefix-to-URI bindings already emitted by ancestor elements.
+    /// * `namespace_plan` - Optional namespace optimization plan.
     ///
     /// # Returns
     /// * `Result<String, AnyError>` - The serialized element content or an error.
     fn build_element_content(
         xml_document: &XmlDocument,
         element_id: NodeId,
-        inherited_ns: &HashMap<String, String>,
+        namespace_plan: Option<&NamespacePlan>,
     ) -> Result<String, AnyError> {
         let mut content_part = String::default();
 
@@ -213,26 +292,17 @@ impl XmlSerializer {
 
         // Check if the element has contents
         if let Some(contents) = element.get_child_contents() {
-            let (open_tag, emitted_ns) = Self::build_element(element, inherited_ns)?;
+            let open_tag = Self::build_element(element, element_id, namespace_plan)?;
             content_part.push('<');
             content_part.push_str(&open_tag);
             content_part.push('>');
-
-            let mut extended_scope;
-            let child_ns: &HashMap<String, String> = if emitted_ns.is_empty() {
-                inherited_ns
-            } else {
-                extended_scope = inherited_ns.clone();
-                extended_scope.extend(emitted_ns);
-                &extended_scope
-            };
 
             for content in contents {
                 match content {
                     // Recursively process child elements
                     XmlElementContentType::Element((id, _, _)) => {
                         let element_content =
-                            Self::build_element_content(xml_document, *id, child_ns)
+                            Self::build_element_content(xml_document, *id, namespace_plan)
                                 .context("draviavemal-xml_rs::Failed to build element content")?;
                         content_part.push_str(&element_content);
                     }
@@ -256,7 +326,7 @@ impl XmlSerializer {
                 content_part.push('>');
             }
         } else {
-            let (open_tag, _) = Self::build_element(element, inherited_ns)?;
+            let open_tag = Self::build_element(element, element_id, namespace_plan)?;
             content_part.push('<');
             content_part.push_str(&open_tag);
             content_part.push_str("/>");
@@ -269,10 +339,14 @@ impl XmlSerializer {
     ///
     /// # Arguments
     /// * `xml_document` - The XML document to serialize.
+    /// * `namespace_plan` - Optional namespace optimization plan.
     ///
     /// # Returns
     /// * `AnyResult<String, AnyError>` - The complete XML string or an error.
-    fn build_xml_tree(xml_document: &XmlDocument) -> AnyResult<String, AnyError> {
+    fn build_xml_tree(
+        xml_document: &XmlDocument,
+        namespace_plan: Option<&NamespacePlan>,
+    ) -> AnyResult<String, AnyError> {
         let mut xml_part = String::default();
 
         // Get the root element ID
@@ -283,7 +357,7 @@ impl XmlSerializer {
         );
 
         // Build the XML tree starting from the root
-        let root_content = Self::build_element_content(xml_document, current_id, &HashMap::new())
+        let root_content = Self::build_element_content(xml_document, current_id, namespace_plan)
             .context("draviavemal-xml_rs::Failed to build root content tree")?;
 
         xml_part.push_str(&root_content);
