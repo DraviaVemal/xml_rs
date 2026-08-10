@@ -22,10 +22,6 @@ pub struct XmlAttribute {
 }
 
 impl XmlAttribute {
-    // =====================================================================
-    //  DEVELOPER HACK — direct construction from a raw name (maximum flexibility)
-    // =====================================================================
-
     /// Constructs a new `XmlAttribute` from a raw name and value.
     ///
     /// The `name` is split on the first `':'` into an optional namespace alias and a local
@@ -35,9 +31,9 @@ impl XmlAttribute {
     ///
     /// # Recommendation
     /// This is the low-level primitive and gives full control over the emitted prefix. For a
-    /// robust document prefer [`crate::XmlElement::add_attribute_ns_mut`], which resolves the
-    /// alias from the live scope (reusing an existing binding or declaring a new one) instead
-    /// of trusting a hard-coded prefix string.
+    /// robust document prefer [`crate::XmlElement::add_attribute_mut`] with a namespace, which
+    /// resolves the alias from the live scope (reusing an existing binding or declaring a new
+    /// one) instead of trusting a hard-coded prefix string.
     ///
     /// # Arguments
     /// * `name` - The attribute name, optionally namespaced (e.g., "ns:attr").
@@ -65,10 +61,6 @@ impl XmlAttribute {
 }
 
 impl XmlAttribute {
-    // =====================================================================
-    //  SHARED — neutral accessors
-    // =====================================================================
-
     /// Returns the attribute's local name without namespace prefix.
     ///
     /// # Returns

@@ -31,12 +31,6 @@ pub struct NamespaceDeclaration {
 }
 
 impl NamespaceDeclaration {
-    // =====================================================================
-    //  RECOMMENDED — namespace-aware API (robust, preferred entry points)
-    // =====================================================================
-    // These constructors build the declarations that drive every namespace-aware
-    // element and attribute method. Prefer them over hand-writing `prefix:name`
-    // strings so alias mapping and `xmlns` emission stay correct per document scope.
 
     /// Builds a declaration that adopts the alias already bound to `uri` in scope,
     /// falling back to `default_alias` when the URI is not yet declared.
@@ -86,10 +80,6 @@ impl NamespaceDeclaration {
             alias_override: Some(alias_override),
         }
     }
-
-    // =====================================================================
-    //  SHARED — internal resolution (crate visible)
-    // =====================================================================
 
     /// Resolves the alias for this declaration against `namespace`.
     ///

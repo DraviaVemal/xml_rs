@@ -147,9 +147,7 @@ mod xml_test {
         let modified_significant: Vec<char> = modified.chars().collect();
         let shorter_length = original_significant.len().min(modified_significant.len());
         let mut index = 0;
-        while index < shorter_length
-            && original_significant[index] == modified_significant[index]
-        {
+        while index < shorter_length && original_significant[index] == modified_significant[index] {
             index += 1;
         }
         if index == original_significant.len() && index == modified_significant.len() {
@@ -257,7 +255,11 @@ mod xml_test {
             .expect("Failed to get first sheet");
 
         if let Some(attr) = first_sheet.get_attribute("name") {
-            assert_eq!(attr.get_value(), "Style", "First sheet should have name='Style'");
+            assert_eq!(
+                attr.get_value(),
+                "Style",
+                "First sheet should have name='Style'"
+            );
         } else {
             panic!("First sheet should have attributes");
         }
@@ -584,10 +586,7 @@ mod xml_test {
 
         // Add a new attribute
         element
-            .add_attribute_mut(XmlAttribute::new(
-                "data-test".to_string(),
-                "value".to_string(),
-            ))
+            .add_attribute_mut("data-test", "value")
             .expect("Failed to add attribute");
 
         // Remove an attribute
@@ -730,17 +729,17 @@ mod xml_test {
 
         // Insert before first element
         document
-            .inser_child_element_before_first_tag_mut(root_id, "before-first", "first", None)
+            .insert_child_element_before_first_tag_mut(root_id, "before-first", "first", None)
             .expect("Failed to insert before first element");
 
         // Insert after last element
         document
-            .inser_child_element_after_last_tag_mut(root_id, "after-last", "last", None)
+            .insert_child_element_after_last_tag_mut(root_id, "after-last", "last", None)
             .expect("Failed to insert after last element");
 
         // Insert after middle element
         document
-            .inser_child_element_after_last_tag_mut(root_id, "after-middle", "middle", None)
+            .insert_child_element_after_last_tag_mut(root_id, "after-middle", "middle", None)
             .expect("Failed to insert after middle element");
 
         // Verify order
@@ -809,7 +808,7 @@ mod xml_test {
 
         // Insert namespaced element after ns:child
         document
-            .inser_child_element_after_last_tag_ns_mut(root_id, "ns:sibling", "ns:child", None)
+            .insert_child_element_after_last_tag_mut(root_id, "ns:sibling", "ns:child", None)
             .expect("Failed to insert after namespaced element");
 
         // Serialize and verify
@@ -1069,7 +1068,7 @@ mod xml_test {
         {
             let element_mut = document.get_element_mut(item_element_id).unwrap();
             element_mut
-                .add_replace_attribute_mut(XmlAttribute::new("a".to_string(), "2".to_string()))
+                .add_replace_attribute_mut("a", "2")
                 .expect("replace attr");
         }
 
@@ -1264,7 +1263,7 @@ mod xml_test {
     fn test_ns_decl_root_emits_declaration() {
         let mut document = XmlDocument::new();
         document
-            .create_root_element_ns_mut(&DRAWINGML_NS, "wsDr", None)
+            .create_root_element_ns_mut("wsDr", &DRAWINGML_NS, None)
             .expect("failed to create ns root");
         let xml = String::from_utf8(
             XmlSerializer::xml_tree_to_vec(&mut document).expect("serialize failed"),
@@ -1281,10 +1280,10 @@ mod xml_test {
     fn test_ns_decl_child_reuses_in_scope_alias() {
         let mut document = XmlDocument::new();
         let root_id = document
-            .create_root_element_ns_mut(&DRAWINGML_NS, "wsDr", None)
+            .create_root_element_ns_mut("wsDr", &DRAWINGML_NS, None)
             .unwrap();
         document
-            .append_child_element_ns_mut(root_id, &DRAWINGML_NS, "blip", None)
+            .append_child_element_ns_mut(root_id, "blip", &DRAWINGML_NS, None)
             .expect("failed to append ns child");
         let xml = String::from_utf8(
             XmlSerializer::xml_tree_to_vec(&mut document).expect("serialize failed"),
@@ -1302,10 +1301,10 @@ mod xml_test {
     fn test_ns_decl_child_auto_declares_missing_namespace() {
         let mut document = XmlDocument::new();
         let root_id = document
-            .create_root_element_ns_mut(&DRAWINGML_NS, "wsDr", None)
+            .create_root_element_ns_mut("wsDr", &DRAWINGML_NS, None)
             .unwrap();
         document
-            .append_child_element_ns_mut(root_id, &RELATIONSHIPS_NS, "child", None)
+            .append_child_element_ns_mut(root_id, "child", &RELATIONSHIPS_NS, None)
             .expect("failed to append child with new namespace");
         let xml = String::from_utf8(
             XmlSerializer::xml_tree_to_vec(&mut document).expect("serialize failed"),
@@ -1323,7 +1322,7 @@ mod xml_test {
         let overridden = NamespaceDeclaration::with_override("http://drawingml", "a", "draw");
         let mut document = XmlDocument::new();
         let root_id = document
-            .create_root_element_ns_mut(&DRAWINGML_NS, "wsDr", None)
+            .create_root_element_ns_mut("wsDr", &DRAWINGML_NS, None)
             .unwrap();
         let alias = document
             .resolve_alias_mut(root_id, &overridden)
@@ -1335,16 +1334,16 @@ mod xml_test {
     fn test_ns_decl_add_attribute_reuses_and_declares() {
         let mut document = XmlDocument::new();
         let root_id = document
-            .create_root_element_ns_mut(&DRAWINGML_NS, "wsDr", None)
+            .create_root_element_ns_mut("wsDr", &DRAWINGML_NS, None)
             .unwrap();
         let blip_id = document
-            .append_child_element_ns_mut(root_id, &DRAWINGML_NS, "blip", None)
+            .append_child_element_ns_mut(root_id, "blip", &DRAWINGML_NS, None)
             .unwrap();
         // Relationships namespace is not in scope; adding the attribute must declare it here.
         document
             .get_element_mut(blip_id)
             .unwrap()
-            .add_attribute_ns_mut(&RELATIONSHIPS_NS, "embed", "rId5")
+            .add_attribute_ns_mut("embed", &RELATIONSHIPS_NS, "rId5")
             .expect("failed to add namespaced attribute");
 
         let found = document
@@ -1369,63 +1368,83 @@ mod xml_test {
     }
 
     #[test]
-    fn test_ns_decl_resolve_alias_read_only() {
+    fn test_add_namespaces_declares_deduped_for_manual_use() {
         let mut document = XmlDocument::new();
-        let root_id = document
-            .create_root_element_ns_mut(&DRAWINGML_NS, "wsDr", None)
-            .unwrap();
-        assert_eq!(document.resolve_alias(root_id, &DRAWINGML_NS).unwrap(), "a");
+        let root_id = document.create_root_element_mut("root", None).unwrap();
+        {
+            let root = document.get_element_mut(root_id).unwrap();
+            // The duplicate DRAWINGML_NS in the array must be deduplicated.
+            root.add_namespaces_mut(&[DRAWINGML_NS, RELATIONSHIPS_NS, DRAWINGML_NS]);
+        }
+        // The declared aliases are now usable by raw `prefix:name` tags wired up manually.
+        document
+            .append_child_element_mut(root_id, "a:blip", None)
+            .expect("declared alias should be usable for a raw tag");
+
+        let xml = String::from_utf8(
+            XmlSerializer::xml_tree_to_vec(&mut document).expect("serialize failed"),
+        )
+        .unwrap();
+        assert!(xml.contains("<a:blip"), "raw prefixed tag should serialize");
+        assert!(
+            xml.contains("xmlns:a=\"http://drawingml\""),
+            "first declared namespace should be present"
+        );
+        assert!(
+            xml.contains("xmlns:r=\"http://relationships\""),
+            "second declared namespace should be present"
+        );
         assert_eq!(
-            document.resolve_alias(root_id, &RELATIONSHIPS_NS).unwrap(),
-            "r"
+            xml.matches("xmlns:a=").count(),
+            1,
+            "duplicate declaration must be deduplicated"
         );
     }
 
     #[test]
     fn test_standalone_declaration_preserved() {
         let xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><root/>"#;
-        let document = XmlDeserializer::vec_to_xml_doc_tree(xml.as_bytes().to_vec())
-            .expect("parse failed");
+        let document =
+            XmlDeserializer::vec_to_xml_doc_tree(xml.as_bytes().to_vec()).expect("parse failed");
         assert_eq!(document.get_standalone(), Some("yes"));
-        let output = String::from_utf8(
-            XmlSerializer::xml_tree_to_vec(&document).expect("serialize failed"),
-        )
-        .unwrap();
+        let output =
+            String::from_utf8(XmlSerializer::xml_tree_to_vec(&document).expect("serialize failed"))
+                .unwrap();
         assert!(output.contains("standalone=\"yes\""));
     }
 
     #[test]
     fn test_prolog_comments_preserved() {
         let xml = r#"<!-- first --><!-- second --><root/>"#;
-        let document = XmlDeserializer::vec_to_xml_doc_tree(xml.as_bytes().to_vec())
-            .expect("parse failed");
+        let document =
+            XmlDeserializer::vec_to_xml_doc_tree(xml.as_bytes().to_vec()).expect("parse failed");
         assert_eq!(document.get_prolog_comments().len(), 2);
-        let output = String::from_utf8(
-            XmlSerializer::xml_tree_to_vec(&document).expect("serialize failed"),
-        )
-        .unwrap();
+        let output =
+            String::from_utf8(XmlSerializer::xml_tree_to_vec(&document).expect("serialize failed"))
+                .unwrap();
         assert!(output.contains("<!-- first -->"));
         assert!(output.contains("<!-- second -->"));
     }
 
     #[test]
     fn test_default_serialization_preserves_unused_namespace() {
-        let xml = r#"<root xmlns:used="http://used" xmlns:unused="http://unused"><used:child/></root>"#;
-        let document = XmlDeserializer::vec_to_xml_doc_tree(xml.as_bytes().to_vec())
-            .expect("parse failed");
-        let output = String::from_utf8(
-            XmlSerializer::xml_tree_to_vec(&document).expect("serialize failed"),
-        )
-        .unwrap();
+        let xml =
+            r#"<root xmlns:used="http://used" xmlns:unused="http://unused"><used:child/></root>"#;
+        let document =
+            XmlDeserializer::vec_to_xml_doc_tree(xml.as_bytes().to_vec()).expect("parse failed");
+        let output =
+            String::from_utf8(XmlSerializer::xml_tree_to_vec(&document).expect("serialize failed"))
+                .unwrap();
         assert!(output.contains("xmlns:unused=\"http://unused\""));
         assert!(output.contains("xmlns:used=\"http://used\""));
     }
 
     #[test]
     fn test_optimize_drops_unused_namespace() {
-        let xml = r#"<root xmlns:used="http://used" xmlns:unused="http://unused"><used:child/></root>"#;
-        let document = XmlDeserializer::vec_to_xml_doc_tree(xml.as_bytes().to_vec())
-            .expect("parse failed");
+        let xml =
+            r#"<root xmlns:used="http://used" xmlns:unused="http://unused"><used:child/></root>"#;
+        let document =
+            XmlDeserializer::vec_to_xml_doc_tree(xml.as_bytes().to_vec()).expect("parse failed");
         let optimized = String::from_utf8(
             XmlSerializer::xml_tree_to_vec_with(
                 &document,
@@ -1436,15 +1455,21 @@ mod xml_test {
             .expect("serialize failed"),
         )
         .unwrap();
-        assert!(!optimized.contains("http://unused"), "unused namespace should be dropped");
-        assert!(optimized.contains("xmlns:used=\"http://used\""), "used namespace should remain");
+        assert!(
+            !optimized.contains("http://unused"),
+            "unused namespace should be dropped"
+        );
+        assert!(
+            optimized.contains("xmlns:used=\"http://used\""),
+            "used namespace should remain"
+        );
     }
 
     #[test]
     fn test_optimize_hoists_redeclared_namespace_to_common_ancestor() {
         let xml = r#"<workbook xmlns="http://main" xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" mc:Ignorable="x15" xmlns:x15="http://x15"><extLst><ext xmlns:x15="http://x15"><x15:workbookPr/></ext></extLst></workbook>"#;
-        let document = XmlDeserializer::vec_to_xml_doc_tree(xml.as_bytes().to_vec())
-            .expect("parse failed");
+        let document =
+            XmlDeserializer::vec_to_xml_doc_tree(xml.as_bytes().to_vec()).expect("parse failed");
         let optimized = String::from_utf8(
             XmlSerializer::xml_tree_to_vec_with(
                 &document,
