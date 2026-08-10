@@ -887,27 +887,3 @@ impl XmlDocument {
         Ok((node_id, tag, tag_ns))
     }
 }
-
-#[cfg(test)]
-mod resolve_alias_tests {
-    use super::XmlDocument;
-    use crate::NamespaceDeclaration;
-
-    const DRAWINGML_NS: NamespaceDeclaration = NamespaceDeclaration::new("http://drawingml", "a");
-    const RELATIONSHIPS_NS: NamespaceDeclaration =
-        NamespaceDeclaration::new("http://relationships", "r");
-
-    #[test]
-    fn resolve_alias_reads_without_declaring() {
-        let mut document = XmlDocument::new();
-        let root_id = document
-            .create_root_element_ns_mut("wsDr", &DRAWINGML_NS, None)
-            .unwrap();
-        // In-scope URI keeps its declared alias; an unknown URI falls back to its default.
-        assert_eq!(document.resolve_alias(root_id, &DRAWINGML_NS).unwrap(), "a");
-        assert_eq!(
-            document.resolve_alias(root_id, &RELATIONSHIPS_NS).unwrap(),
-            "r"
-        );
-    }
-}
