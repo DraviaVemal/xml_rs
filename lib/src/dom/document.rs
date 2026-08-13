@@ -6,8 +6,7 @@
  */
 
 use crate::{
-    NamespaceDeclaration, NsTag, Tag, XPathHandler, XmlAttribute, XmlElement,
-    XmlElementContentType, XmlNamespace,
+    NamespaceDeclaration, NsTag, Tag, XmlAttribute, XmlElement, XmlElementContentType, XmlNamespace,
 };
 use anyhow::{Context, Error as AnyError};
 use log::{debug, trace, warn};
@@ -332,22 +331,6 @@ impl XmlDocument {
                 .map(|(node_id, element)| (*node_id, element.clone_limited()))
                 .collect(),
         }
-    }
-
-    /// Evaluates an XPath-style query against the document.
-    ///
-    /// Note: XPath evaluation is not yet implemented; this currently parses the query and
-    /// returns `Ok(None)`.
-    ///
-    /// # Arguments
-    /// * `query_path` - The query expression to evaluate.
-    ///
-    /// # Returns
-    /// * `Result<Option<Vec<NodeId>>, AnyError>` - The matching node IDs, or None when there
-    ///   are no matches.
-    pub fn query_xpath(&self, query_path: &str) -> Result<Option<Vec<NodeId>>, AnyError> {
-        let xpath_handler = XPathHandler::new(query_path);
-        Ok(None)
     }
 
     /// Prefer [`XmlDocument::find_first_child_ns`] for round-trippable namespaces.
