@@ -350,11 +350,14 @@ impl XmlDocument {
         Ok(None)
     }
 
-    /// Finds the first child element with the given tag name.
+    /// Prefer [`XmlDocument::find_first_child_ns`] for round-trippable namespaces.
+    ///
+    /// Finds the first child element matching `tag`; a prefixed `tag` is matched by its
+    /// namespaced name, otherwise by local name.
     ///
     /// # Arguments
     /// * `parent_id` - The ID of the parent element.
-    /// * `tag` - The tag name to search for.
+    /// * `tag` - The tag name to search for, optionally namespaced (e.g., "ns:tag").
     ///
     /// # Returns
     /// * `Result<Option<NodeId>, AnyError>` - The ID of the first matching child, or None if not found.
@@ -369,30 +372,36 @@ impl XmlDocument {
             .find_first_child(tag))
     }
 
-    /// Finds the first child element with the given namespaced tag name.
+    /// Finds the first child element whose alias is resolved from `ns_declaration` in the parent
+    /// scope and whose local name matches `local_name`.
     ///
     /// # Arguments
     /// * `parent_id` - The ID of the parent element.
-    /// * `tag_ns` - The namespaced tag to search for (e.g., "ns:tag").
+    /// * `local_name` - The local tag name without prefix.
+    /// * `ns_declaration` - The namespace declaration identifying the tag's namespace.
     ///
     /// # Returns
     /// * `Result<Option<NodeId>, AnyError>` - The ID of the first matching child, or None if not found.
     pub fn find_first_child_ns(
         &self,
         parent_id: NodeId,
-        tag_ns: &str,
+        tag: &str,
+        ns_declaration: &NamespaceDeclaration,
     ) -> Result<Option<NodeId>, AnyError> {
         Ok(self
             .get_element(parent_id)
             .context("draviavemal-xml_rs::Failed to pull parent element")?
-            .find_first_child_ns(tag_ns))
+            .find_first_child_ns(tag, ns_declaration))
     }
 
-    /// Finds all child elements with the given tag name.
+    /// Prefer [`XmlDocument::find_all_child_ns`] for round-trippable namespaces.
+    ///
+    /// Finds all child elements matching `tag`; a prefixed `tag` is matched by its namespaced
+    /// name, otherwise by local name.
     ///
     /// # Arguments
     /// * `parent_id` - The ID of the parent element.
-    /// * `tag` - The tag name to search for.
+    /// * `tag` - The tag name to search for, optionally namespaced (e.g., "ns:tag").
     ///
     /// # Returns
     /// * `Result<Option<Vec<NodeId>>, AnyError>` - A vector of matching child IDs, or None if none found.
@@ -407,30 +416,36 @@ impl XmlDocument {
             .find_all_child(tag))
     }
 
-    /// Finds all child elements with the given namespaced tag name.
+    /// Finds all child elements whose alias is resolved from `ns_declaration` in the parent
+    /// scope and whose local name matches `local_name`.
     ///
     /// # Arguments
     /// * `parent_id` - The ID of the parent element.
-    /// * `tag_ns` - The namespaced tag to search for (e.g., "ns:tag").
+    /// * `local_name` - The local tag name without prefix.
+    /// * `ns_declaration` - The namespace declaration identifying the tag's namespace.
     ///
     /// # Returns
-    /// * `Result<Option<Vec<NodeId>, AnyError>` - A vector of matching child IDs, or None if none found.
+    /// * `Result<Option<Vec<NodeId>>, AnyError>` - A vector of matching child IDs, or None if none found.
     pub fn find_all_child_ns(
         &self,
         parent_id: NodeId,
-        tag_ns: &str,
+        tag: &str,
+        ns_declaration: &NamespaceDeclaration,
     ) -> Result<Option<Vec<NodeId>>, AnyError> {
         Ok(self
             .get_element(parent_id)
             .context("draviavemal-xml_rs::Failed to pull parent element")?
-            .find_all_child_ns(tag_ns))
+            .find_all_child_ns(tag, ns_declaration))
     }
 
-    /// Finds the first child element with a specific attribute name and value.
+    /// Prefer [`XmlDocument::find_first_by_attribute_ns`] for round-trippable namespaces.
+    ///
+    /// Finds the first child element with a matching attribute; a prefixed `attr_name` is
+    /// matched by its namespaced name, otherwise by local name.
     ///
     /// # Arguments
     /// * `parent_id` - The ID of the parent element.
-    /// * `attr_name` - The attribute name to match.
+    /// * `attr_name` - The attribute name to match, optionally namespaced (e.g., "ns:attr").
     /// * `attr_value` - The attribute value to match.
     ///
     /// # Returns
@@ -454,7 +469,7 @@ impl XmlDocument {
                     if self
                         .get_element(*child_id)
                         .context("draviavemal-xml_rs::Failed to pull child element")?
-                        .has_attribute(attr_name, attr_value)
+                        .attribute_value_matches(attr_name, attr_value)
                     {
                         return Ok(Some(child_id.clone()));
                     }
@@ -464,11 +479,13 @@ impl XmlDocument {
         Ok(None)
     }
 
-    /// Finds the first child element with a specific namespaced attribute name and value.
+    /// Finds the first child element whose attribute alias is resolved from `ns_declaration`
+    /// in the parent scope, matching `attr_name` and `attr_value`.
     ///
     /// # Arguments
     /// * `parent_id` - The ID of the parent element.
-    /// * `attr_name_ns` - The namespaced attribute name to match (e.g., "ns:attr").
+    /// * `attr_name` - The attribute local name without prefix.
+    /// * `ns_declaration` - The namespace declaration identifying the attribute's namespace.
     /// * `attr_value` - The attribute value to match.
     ///
     /// # Returns
@@ -476,17 +493,39 @@ impl XmlDocument {
     pub fn find_first_by_attribute_ns(
         &self,
         parent_id: NodeId,
-        attr_name_ns: &str,
+        attr_name: &str,
+        ns_declaration: &NamespaceDeclaration,
         attr_value: &str,
     ) -> Result<Option<NodeId>, AnyError> {
-        self.find_first_by_attribute(parent_id, attr_name_ns, attr_value)
+        if let Some(contents) = self
+            .get_element(parent_id)
+            .context("draviavemal-xml_rs::Failed to pull parent element")?
+            .get_child_contents()
+        {
+            for content in contents {
+                if let XmlElementContentType::Element((child_id, _, _)) = content {
+                    if self
+                        .get_element(*child_id)
+                        .context("draviavemal-xml_rs::Failed to pull child element")?
+                        .get_attribute_value_ns(attr_name, ns_declaration)
+                        == Some(attr_value)
+                    {
+                        return Ok(Some(*child_id));
+                    }
+                }
+            }
+        }
+        Ok(None)
     }
 
-    /// Finds all child elements with a specific attribute name and value.
+    /// Prefer [`XmlDocument::find_all_by_attribute_ns`] for round-trippable namespaces.
+    ///
+    /// Finds all child elements with a matching attribute; a prefixed `attr_name` is matched by
+    /// its namespaced name, otherwise by local name.
     ///
     /// # Arguments
     /// * `parent_id` - The ID of the parent element.
-    /// * `attr_name` - The attribute name to match.
+    /// * `attr_name` - The attribute name to match, optionally namespaced (e.g., "ns:attr").
     /// * `attr_value` - The attribute value to match.
     ///
     /// # Returns
@@ -512,7 +551,7 @@ impl XmlDocument {
                     if self
                         .get_element(*child_id)
                         .context("draviavemal-xml_rs::Failed to pull child element")?
-                        .has_attribute(attr_name, attr_value)
+                        .attribute_value_matches(attr_name, attr_value)
                     {
                         result.push(*child_id);
                     }
@@ -528,11 +567,13 @@ impl XmlDocument {
         }
     }
 
-    /// Finds all child elements with a specific namespaced attribute name and value.
+    /// Finds all child elements whose attribute alias is resolved from `ns_declaration` in the
+    /// parent scope, matching `attr_name` and `attr_value`.
     ///
     /// # Arguments
     /// * `parent_id` - The ID of the parent element.
-    /// * `attr_name_ns` - The namespaced attribute name to match (e.g., "ns:attr").
+    /// * `attr_name` - The attribute local name without prefix.
+    /// * `ns_declaration` - The namespace declaration identifying the attribute's namespace.
     /// * `attr_value` - The attribute value to match.
     ///
     /// # Returns
@@ -540,25 +581,24 @@ impl XmlDocument {
     pub fn find_all_by_attribute_ns(
         &self,
         parent_id: NodeId,
-        attr_name_ns: &str,
+        attr_name: &str,
+        ns_declaration: &NamespaceDeclaration,
         attr_value: &str,
     ) -> Result<Option<Vec<NodeId>>, AnyError> {
         let mut result = Vec::new();
 
-        // Check if the parent element has contents
         if let Some(contents) = self
             .get_element(parent_id)
             .context("draviavemal-xml_rs::Failed to pull parent element")?
             .get_child_contents()
         {
-            // Iterate through each content item
             for content in contents {
                 if let XmlElementContentType::Element((child_id, _, _)) = content {
-                    // Check if the child element has the specified attribute with the specified value
                     if self
                         .get_element(*child_id)
                         .context("draviavemal-xml_rs::Failed to pull child element")?
-                        .has_attribute_ns(attr_name_ns, attr_value)
+                        .get_attribute_value_ns(attr_name, ns_declaration)
+                        == Some(attr_value)
                     {
                         result.push(*child_id);
                     }
@@ -566,12 +606,205 @@ impl XmlDocument {
             }
         }
 
-        // Return None if no matching children found
         if result.is_empty() {
             Ok(None)
         } else {
             Ok(Some(result))
         }
+    }
+
+    /// Gets the parent element ID of the given element.
+    ///
+    /// # Arguments
+    /// * `element_id` - The ID of the element whose parent is requested.
+    ///
+    /// # Returns
+    /// * `Result<Option<NodeId>, AnyError>` - The parent ID, or None for the root element.
+    pub fn get_parent(&self, element_id: NodeId) -> Result<Option<NodeId>, AnyError> {
+        Ok(self
+            .get_element(element_id)
+            .context("draviavemal-xml_rs::Failed to pull element")?
+            .get_parent_id())
+    }
+
+    /// Gets the IDs of all direct child elements of the given element, in document order.
+    ///
+    /// # Arguments
+    /// * `parent_id` - The ID of the parent element.
+    ///
+    /// # Returns
+    /// * `Result<Option<Vec<NodeId>>, AnyError>` - The child element IDs, or None when there are none.
+    pub fn get_children(&self, parent_id: NodeId) -> Result<Option<Vec<NodeId>>, AnyError> {
+        Ok(self
+            .get_element(parent_id)
+            .context("draviavemal-xml_rs::Failed to pull parent element")?
+            .get_child_element_ids())
+    }
+
+    /// Gets the ID of the first direct child element of the given element.
+    ///
+    /// # Arguments
+    /// * `parent_id` - The ID of the parent element.
+    ///
+    /// # Returns
+    /// * `Result<Option<NodeId>, AnyError>` - The first child element ID, or None when there are none.
+    pub fn get_first_child_element(&self, parent_id: NodeId) -> Result<Option<NodeId>, AnyError> {
+        Ok(self
+            .get_element(parent_id)
+            .context("draviavemal-xml_rs::Failed to pull parent element")?
+            .get_first_child_element())
+    }
+
+    /// Gets the ID of the last direct child element of the given element.
+    ///
+    /// # Arguments
+    /// * `parent_id` - The ID of the parent element.
+    ///
+    /// # Returns
+    /// * `Result<Option<NodeId>, AnyError>` - The last child element ID, or None when there are none.
+    pub fn get_last_child_element(&self, parent_id: NodeId) -> Result<Option<NodeId>, AnyError> {
+        Ok(self
+            .get_element(parent_id)
+            .context("draviavemal-xml_rs::Failed to pull parent element")?
+            .get_last_child_element())
+    }
+
+    /// Gets the next sibling element that follows the given element under the same parent.
+    ///
+    /// # Arguments
+    /// * `element_id` - The ID of the reference element.
+    ///
+    /// # Returns
+    /// * `Result<Option<NodeId>, AnyError>` - The following sibling ID, or None when it is last.
+    pub fn get_next_sibling(&self, element_id: NodeId) -> Result<Option<NodeId>, AnyError> {
+        self.sibling_at_offset(element_id, 1)
+    }
+
+    /// Gets the previous sibling element that precedes the given element under the same parent.
+    ///
+    /// # Arguments
+    /// * `element_id` - The ID of the reference element.
+    ///
+    /// # Returns
+    /// * `Result<Option<NodeId>, AnyError>` - The preceding sibling ID, or None when it is first.
+    pub fn get_previous_sibling(&self, element_id: NodeId) -> Result<Option<NodeId>, AnyError> {
+        self.sibling_at_offset(element_id, -1)
+    }
+
+    /// Prefer [`XmlDocument::get_elements_by_tag_name_ns`] for round-trippable namespaces.
+    ///
+    /// Collects all descendant elements matching `tag`; a prefixed `tag` is matched by its
+    /// namespaced name, otherwise by local name. The search spans the whole subtree.
+    ///
+    /// # Arguments
+    /// * `parent_id` - The ID of the element whose subtree is searched.
+    /// * `tag` - The tag name to search for, optionally namespaced (e.g., "ns:tag").
+    ///
+    /// # Returns
+    /// * `Result<Option<Vec<NodeId>>, AnyError>` - The matching descendant IDs, or None if none found.
+    pub fn get_elements_by_tag_name(
+        &self,
+        parent_id: NodeId,
+        tag: &str,
+    ) -> Result<Option<Vec<NodeId>>, AnyError> {
+        let match_by_ns = tag.contains(':');
+        let mut result = Vec::new();
+        self.collect_descendants_by_tag(parent_id, tag, match_by_ns, &mut result)?;
+        if result.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(result))
+        }
+    }
+
+    /// Collects all descendant elements whose alias is resolved from `ns_declaration` in the
+    /// subtree root's scope and whose local name matches `local_name`.
+    ///
+    /// # Arguments
+    /// * `parent_id` - The ID of the element whose subtree is searched.
+    /// * `local_name` - The local tag name without prefix.
+    /// * `ns_declaration` - The namespace declaration identifying the tag's namespace.
+    ///
+    /// # Returns
+    /// * `Result<Option<Vec<NodeId>>, AnyError>` - The matching descendant IDs, or None if none found.
+    pub fn get_elements_by_tag_name_ns(
+        &self,
+        parent_id: NodeId,
+        tag: &str,
+        ns_declaration: &NamespaceDeclaration,
+    ) -> Result<Option<Vec<NodeId>>, AnyError> {
+        let tag_ns = self.build_reference_ns_tag(parent_id, tag, ns_declaration)?;
+        let mut result = Vec::new();
+        self.collect_descendants_by_tag(parent_id, &tag_ns, true, &mut result)?;
+        if result.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(result))
+        }
+    }
+
+    /// Concatenates the text of every descendant text node of the given element.
+    ///
+    /// # Arguments
+    /// * `element_id` - The ID of the element whose text content is collected.
+    ///
+    /// # Returns
+    /// * `Result<String, AnyError>` - The joined descendant text.
+    pub fn get_element_text_content(&self, element_id: NodeId) -> Result<String, AnyError> {
+        let mut text = String::new();
+        self.collect_text_content(element_id, &mut text)?;
+        Ok(text)
+    }
+
+    /// Resolves the namespace URI bound to `prefix` in the given element's scope.
+    ///
+    /// # Arguments
+    /// * `element_id` - The ID of the element providing the scope.
+    /// * `prefix` - The namespace prefix to resolve, empty for the default namespace.
+    ///
+    /// # Returns
+    /// * `Result<Option<String>, AnyError>` - The bound URI, or None when the prefix is undeclared.
+    pub fn lookup_namespace_uri(
+        &self,
+        element_id: NodeId,
+        prefix: &str,
+    ) -> Result<Option<String>, AnyError> {
+        Ok(self
+            .get_element(element_id)
+            .context("draviavemal-xml_rs::Failed to pull element")?
+            .resolve_alias_to_uri(prefix))
+    }
+
+    /// Resolves the prefix bound to `uri` in the given element's scope.
+    ///
+    /// # Arguments
+    /// * `element_id` - The ID of the element providing the scope.
+    /// * `uri` - The namespace URI to resolve.
+    ///
+    /// # Returns
+    /// * `Result<Option<String>, AnyError>` - The in-scope prefix, or None when the URI is undeclared.
+    pub fn lookup_prefix(&self, element_id: NodeId, uri: &str) -> Result<Option<String>, AnyError> {
+        Ok(self
+            .get_element(element_id)
+            .context("draviavemal-xml_rs::Failed to pull element")?
+            .get_alias_for_uri(uri))
+    }
+
+    /// Replaces the entire content of an element with a single text node.
+    ///
+    /// Descendant elements are removed from the document before the text is set.
+    ///
+    /// # Arguments
+    /// * `element_id` - The ID of the element to update.
+    /// * `text` - The text that becomes the element's only content.
+    ///
+    /// # Returns
+    /// * `Result<(), AnyError>` - Success or an error.
+    pub fn set_element_text_mut(&mut self, element_id: NodeId, text: &str) -> Result<(), AnyError> {
+        self.clear_element_content_mut(element_id)?;
+        self.get_element_mut(element_id)
+            .context("draviavemal-xml_rs::Failed to get element")?
+            .add_text_mut(text)
     }
 
     /// Sets the XML version string.
@@ -704,6 +937,93 @@ impl XmlDocument {
                     }
                     // Recursively clear the subtree of each child element
                     self.clear_element_subtree_mut(child_id)?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl XmlDocument {
+    /// Returns the sibling element `offset` positions from `element_id` under its parent.
+    fn sibling_at_offset(
+        &self,
+        element_id: NodeId,
+        offset: i64,
+    ) -> Result<Option<NodeId>, AnyError> {
+        let parent_id = match self
+            .get_element(element_id)
+            .context("draviavemal-xml_rs::Failed to pull element")?
+            .get_parent_id()
+        {
+            Some(parent_id) => parent_id,
+            None => return Ok(None),
+        };
+        let siblings = match self
+            .get_element(parent_id)
+            .context("draviavemal-xml_rs::Failed to pull parent element")?
+            .get_child_element_ids()
+        {
+            Some(siblings) => siblings,
+            None => return Ok(None),
+        };
+        let position = match siblings.iter().position(|id| *id == element_id) {
+            Some(position) => position as i64,
+            None => return Ok(None),
+        };
+        let target = position + offset;
+        if target < 0 || target as usize >= siblings.len() {
+            Ok(None)
+        } else {
+            Ok(Some(siblings[target as usize]))
+        }
+    }
+
+    /// Recursively collects descendants of `element_id` whose tag matches, honoring `match_by_ns`.
+    fn collect_descendants_by_tag(
+        &self,
+        element_id: NodeId,
+        tag: &str,
+        match_by_ns: bool,
+        result: &mut Vec<NodeId>,
+    ) -> Result<(), AnyError> {
+        if let Some(contents) = self
+            .get_element(element_id)
+            .context("draviavemal-xml_rs::Failed to pull element")?
+            .get_child_contents()
+        {
+            for content in contents {
+                if let XmlElementContentType::Element((child_id, child_tag, child_tag_ns)) = content
+                {
+                    let candidate = if match_by_ns {
+                        child_tag_ns.as_str()
+                    } else {
+                        child_tag.as_str()
+                    };
+                    if candidate == tag {
+                        result.push(*child_id);
+                    }
+                    self.collect_descendants_by_tag(*child_id, tag, match_by_ns, result)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Recursively appends the text of every descendant text node into `text`.
+    fn collect_text_content(&self, element_id: NodeId, text: &mut String) -> Result<(), AnyError> {
+        if let Some(contents) = self
+            .get_element(element_id)
+            .context("draviavemal-xml_rs::Failed to pull element")?
+            .get_child_contents()
+        {
+            for content in contents {
+                match content {
+                    XmlElementContentType::Text(value) => text.push_str(value),
+                    XmlElementContentType::Element((child_id, _, _)) => {
+                        self.collect_text_content(*child_id, text)?;
+                    }
+                    _ => {}
                 }
             }
         }
