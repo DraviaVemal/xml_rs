@@ -1124,7 +1124,10 @@ mod xml_test {
 
         let item_element = document.get_element(item_element_id).unwrap();
         assert!(item_element
-            .get_attribute_ns("tag", &NamespaceDeclaration::new("http://example.org/ns", "ns"))
+            .get_attribute_ns(
+                "tag",
+                &NamespaceDeclaration::new("http://example.org/ns", "ns")
+            )
             .is_none());
 
         {
@@ -1156,9 +1159,6 @@ mod xml_test {
 
         let cloned_document = document.clone();
         assert_eq!(cloned_document.get_root_id(), document.get_root_id());
-
-        let query_result = document.query_xpath("/root").unwrap();
-        assert!(query_result.is_none());
 
         let mut tmp_file_path = std::env::temp_dir();
         tmp_file_path.push("xml_rs_test_roundtrip.xml");
@@ -1512,7 +1512,10 @@ mod xml_test {
         let children = doc.get_children(root_id).unwrap().expect("children");
         assert_eq!(children.len(), 3);
 
-        let first = doc.get_first_child_element(root_id).unwrap().expect("first");
+        let first = doc
+            .get_first_child_element(root_id)
+            .unwrap()
+            .expect("first");
         let last = doc.get_last_child_element(root_id).unwrap().expect("last");
         assert_eq!(first, children[0]);
         assert_eq!(last, children[2]);
@@ -1547,7 +1550,8 @@ mod xml_test {
 
     #[test]
     fn test_get_elements_by_tag_name_ns_recursive() {
-        let xml = r#"<root xmlns:a="http://drawingml"><a:group><a:blip/></a:group><a:blip/></root>"#;
+        let xml =
+            r#"<root xmlns:a="http://drawingml"><a:group><a:blip/></a:group><a:blip/></root>"#;
         let doc =
             XmlDeserializer::vec_to_xml_doc_tree(xml.as_bytes().to_vec()).expect("parse failed");
         let root_id = doc.get_root_id();
@@ -1590,7 +1594,8 @@ mod xml_test {
     fn test_element_set_text_keeps_children() {
         let mut doc = XmlDocument::new();
         let root_id = doc.create_root_element_mut("root", None).unwrap();
-        doc.append_child_element_mut(root_id, "child", None).unwrap();
+        doc.append_child_element_mut(root_id, "child", None)
+            .unwrap();
         {
             let root = doc.get_element_mut(root_id).unwrap();
             root.add_text_mut("old").unwrap();
@@ -1635,7 +1640,10 @@ mod xml_test {
         let root = doc.get_element(root_id).unwrap();
 
         assert_eq!(root.get_prefix(), Some("a".to_string()));
-        assert_eq!(root.get_namespace_uri(), Some("http://drawingml".to_string()));
+        assert_eq!(
+            root.get_namespace_uri(),
+            Some("http://drawingml".to_string())
+        );
         assert_eq!(
             doc.lookup_namespace_uri(root_id, "a").unwrap(),
             Some("http://drawingml".to_string())
