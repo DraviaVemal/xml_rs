@@ -835,7 +835,11 @@ mod xml_test {
 
         // Find child by namespaced tag
         let ns_child_id = parsed_doc
-            .find_first_child_ns(parsed_root_id, "ns:child")
+            .find_first_child_ns(
+                parsed_root_id,
+                "child",
+                &NamespaceDeclaration::new("http://example.org/ns", "ns"),
+            )
             .expect("Failed to find namespaced child")
             .expect("No namespaced child found");
 
@@ -930,7 +934,12 @@ mod xml_test {
 
         // Find items with test:type="important"
         let important_items = document
-            .find_all_by_attribute_ns(root_id, "test:type", "important")
+            .find_all_by_attribute_ns(
+                root_id,
+                "type",
+                &NamespaceDeclaration::new("http://example.org/test", "test"),
+                "important",
+            )
             .expect("Failed to search for attribute")
             .expect("No items with test:type='important' found");
 
@@ -1107,11 +1116,16 @@ mod xml_test {
 
         {
             let element_mut = document.get_element_mut(item_element_id).unwrap();
-            element_mut.remove_attribute_ns_mut("ns:tag");
+            element_mut.remove_attribute_ns_mut(
+                "tag",
+                &NamespaceDeclaration::new("http://example.org/ns", "ns"),
+            );
         }
 
         let item_element = document.get_element(item_element_id).unwrap();
-        assert!(item_element.get_attribute_ns("ns:tag").is_none());
+        assert!(item_element
+            .get_attribute_ns("tag", &NamespaceDeclaration::new("http://example.org/ns", "ns"))
+            .is_none());
 
         {
             let element_mut = document.get_element_mut(item_element_id).unwrap();
@@ -1170,7 +1184,7 @@ mod xml_test {
         let blip_id = doc
             .get_element(root_id)
             .unwrap()
-            .find_first_child_ns("a:blip")
+            .find_first_child_ns("blip", &NamespaceDeclaration::new("http://drawingml", "a"))
             .expect("blip not found");
         let blip = doc.get_element(blip_id).unwrap();
         let attr = blip
@@ -1189,7 +1203,7 @@ mod xml_test {
         let blip_id = doc
             .get_element(root_id)
             .unwrap()
-            .find_first_child_ns("a:blip")
+            .find_first_child_ns("blip", &NamespaceDeclaration::new("http://drawingml", "a"))
             .expect("blip not found");
         let blip = doc.get_element(blip_id).unwrap();
         let attr = blip
@@ -1349,7 +1363,7 @@ mod xml_test {
         let found = document
             .get_element(blip_id)
             .unwrap()
-            .get_attribute_by_ns(&RELATIONSHIPS_NS, "embed")
+            .get_attribute_ns("embed", &RELATIONSHIPS_NS)
             .expect("attribute should be retrievable by namespace");
         assert_eq!(found.get_value(), "rId5");
 
@@ -1485,6 +1499,150 @@ mod xml_test {
             optimized.matches("xmlns:x15=").count(),
             1,
             "the redeclared namespace should collapse to a single declaration"
+        );
+    }
+
+    #[test]
+    fn test_navigation_and_siblings() {
+        let xml = r#"<root><a/><b/><c/></root>"#;
+        let doc =
+            XmlDeserializer::vec_to_xml_doc_tree(xml.as_bytes().to_vec()).expect("parse failed");
+        let root_id = doc.get_root_id();
+
+        let children = doc.get_children(root_id).unwrap().expect("children");
+        assert_eq!(children.len(), 3);
+
+        let first = doc.get_first_child_element(root_id).unwrap().expect("first");
+        let last = doc.get_last_child_element(root_id).unwrap().expect("last");
+        assert_eq!(first, children[0]);
+        assert_eq!(last, children[2]);
+
+        assert_eq!(doc.get_parent(first).unwrap(), Some(root_id));
+        assert_eq!(doc.get_parent(root_id).unwrap(), None);
+
+        let middle = children[1];
+        assert_eq!(doc.get_next_sibling(first).unwrap(), Some(middle));
+        assert_eq!(doc.get_previous_sibling(last).unwrap(), Some(middle));
+        assert_eq!(doc.get_previous_sibling(first).unwrap(), None);
+        assert_eq!(doc.get_next_sibling(last).unwrap(), None);
+    }
+
+    #[test]
+    fn test_get_elements_by_tag_name_recursive() {
+        let xml = r#"<root><group><item/><item/></group><item/></root>"#;
+        let doc =
+            XmlDeserializer::vec_to_xml_doc_tree(xml.as_bytes().to_vec()).expect("parse failed");
+        let root_id = doc.get_root_id();
+
+        let items = doc
+            .get_elements_by_tag_name(root_id, "item")
+            .unwrap()
+            .expect("items");
+        assert_eq!(items.len(), 3, "descendant search should be recursive");
+        assert!(doc
+            .get_elements_by_tag_name(root_id, "missing")
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn test_get_elements_by_tag_name_ns_recursive() {
+        let xml = r#"<root xmlns:a="http://drawingml"><a:group><a:blip/></a:group><a:blip/></root>"#;
+        let doc =
+            XmlDeserializer::vec_to_xml_doc_tree(xml.as_bytes().to_vec()).expect("parse failed");
+        let root_id = doc.get_root_id();
+
+        let blips = doc
+            .get_elements_by_tag_name_ns(
+                root_id,
+                "blip",
+                &NamespaceDeclaration::new("http://drawingml", "a"),
+            )
+            .unwrap()
+            .expect("blips");
+        assert_eq!(blips.len(), 2);
+    }
+
+    #[test]
+    fn test_text_content_and_set_element_text() {
+        let xml = r#"<root>hello <b>brave</b> world</root>"#;
+        let mut doc =
+            XmlDeserializer::vec_to_xml_doc_tree(xml.as_bytes().to_vec()).expect("parse failed");
+        let root_id = doc.get_root_id();
+
+        assert_eq!(
+            doc.get_element_text_content(root_id).unwrap(),
+            "hellobraveworld",
+            "document text content should include descendant text"
+        );
+        assert_eq!(
+            doc.get_element(root_id).unwrap().get_text_content(),
+            "helloworld",
+            "element text content should include only direct text nodes"
+        );
+
+        doc.set_element_text_mut(root_id, "replaced").unwrap();
+        assert_eq!(doc.get_element_text_content(root_id).unwrap(), "replaced");
+        assert_eq!(doc.get_children(root_id).unwrap(), None);
+    }
+
+    #[test]
+    fn test_element_set_text_keeps_children() {
+        let mut doc = XmlDocument::new();
+        let root_id = doc.create_root_element_mut("root", None).unwrap();
+        doc.append_child_element_mut(root_id, "child", None).unwrap();
+        {
+            let root = doc.get_element_mut(root_id).unwrap();
+            root.add_text_mut("old").unwrap();
+            root.set_text_mut("new").unwrap();
+        }
+        let root = doc.get_element(root_id).unwrap();
+        assert_eq!(root.get_text_content(), "new");
+        assert_eq!(root.get_child_element_count().unwrap(), 1);
+    }
+
+    #[test]
+    fn test_has_attribute_and_value_helpers() {
+        let xml = r#"<root xmlns:r="http://relationships"><child id="7" r:embed="rId5"/></root>"#;
+        let doc =
+            XmlDeserializer::vec_to_xml_doc_tree(xml.as_bytes().to_vec()).expect("parse failed");
+        let root_id = doc.get_root_id();
+        let child_id = doc
+            .get_element(root_id)
+            .unwrap()
+            .find_first_child("child")
+            .expect("child");
+        let child = doc.get_element(child_id).unwrap();
+
+        assert!(child.has_attribute("id"));
+        assert!(!child.has_attribute("missing"));
+        assert_eq!(child.get_attribute_value("id"), Some("7"));
+
+        let relationships = NamespaceDeclaration::new("http://relationships", "r");
+        assert!(child.has_attribute_ns("embed", &relationships));
+        assert_eq!(
+            child.get_attribute_value_ns("embed", &relationships),
+            Some("rId5")
+        );
+    }
+
+    #[test]
+    fn test_prefix_and_namespace_uri_lookups() {
+        let xml = r#"<a:root xmlns:a="http://drawingml"><a:child/></a:root>"#;
+        let doc =
+            XmlDeserializer::vec_to_xml_doc_tree(xml.as_bytes().to_vec()).expect("parse failed");
+        let root_id = doc.get_root_id();
+        let root = doc.get_element(root_id).unwrap();
+
+        assert_eq!(root.get_prefix(), Some("a".to_string()));
+        assert_eq!(root.get_namespace_uri(), Some("http://drawingml".to_string()));
+        assert_eq!(
+            doc.lookup_namespace_uri(root_id, "a").unwrap(),
+            Some("http://drawingml".to_string())
+        );
+        assert_eq!(
+            doc.lookup_prefix(root_id, "http://drawingml").unwrap(),
+            Some("a".to_string())
         );
     }
 }

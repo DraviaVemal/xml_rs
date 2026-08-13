@@ -166,21 +166,23 @@ impl XmlElement {
         Ok(())
     }
 
-    /// Removes an attribute by its local name.
+    /// Prefer [`XmlElement::remove_attribute_ns_mut`] for round-trippable namespaces.
     ///
-    /// Caution: This method does not consider namespaces. If multiple attributes share the
-    /// same local name but different namespaces, all of them are removed.
+    /// Removes an attribute matched by `name`; a prefixed `name` is matched by its namespaced
+    /// name, otherwise every attribute sharing that local name is removed regardless of prefix.
     ///
     /// # Arguments
-    /// * `name` - The local name of the attribute to remove.
+    /// * `name` - The attribute name to remove, optionally namespaced (e.g., "ns:attr").
     pub fn remove_attribute_mut(&mut self, name: &str) {
+        let match_by_ns = name.contains(':');
         if let Some(attributes) = &mut self.attributes {
             let removed_aliases: Vec<String> = attributes
                 .iter()
-                .filter(|attribute| attribute.get_name() == name)
+                .filter(|attribute| Self::attribute_name_matches(attribute, name, match_by_ns))
                 .filter_map(|attribute| attribute.get_ns_alias().map(str::to_string))
                 .collect();
-            attributes.retain(|attribute| attribute.get_name() != name);
+            attributes
+                .retain(|attribute| !Self::attribute_name_matches(attribute, name, match_by_ns));
             let mut namespace_context = self.namespace_context.borrow_mut();
             for alias in removed_aliases {
                 namespace_context.decrement_alias_use_mut(&alias);
@@ -188,23 +190,18 @@ impl XmlElement {
         }
     }
 
-    /// Removes an attribute by its namespaced name.
+    /// Removes an attribute whose alias is resolved from `ns_declaration` in this element's scope.
     ///
     /// # Arguments
-    /// * `ns_name` - The namespaced name of the attribute to remove (e.g., "ns:attr").
-    pub fn remove_attribute_ns_mut(&mut self, ns_name: &str) {
-        if let Some(attributes) = &mut self.attributes {
-            let removed_aliases: Vec<String> = attributes
-                .iter()
-                .filter(|attribute| attribute.get_ns_name() == ns_name)
-                .filter_map(|attribute| attribute.get_ns_alias().map(str::to_string))
-                .collect();
-            attributes.retain(|attribute| attribute.get_ns_name() != ns_name);
-            let mut namespace_context = self.namespace_context.borrow_mut();
-            for alias in removed_aliases {
-                namespace_context.decrement_alias_use_mut(&alias);
-            }
-        }
+    /// * `local_name` - The attribute local name without prefix.
+    /// * `ns_declaration` - The namespace declaration identifying the attribute's namespace.
+    pub fn remove_attribute_ns_mut(
+        &mut self,
+        local_name: &str,
+        ns_declaration: &NamespaceDeclaration,
+    ) {
+        let ns_name = self.build_scoped_ns_name(local_name, ns_declaration);
+        self.remove_attribute_mut(&ns_name);
     }
 
     /// Clears all attributes of this element.
@@ -245,6 +242,22 @@ impl XmlElement {
         Ok(())
     }
 
+    /// Replaces every direct text node of this element with a single text node.
+    ///
+    /// Child elements and comments are left untouched; only text content is swapped.
+    ///
+    /// # Arguments
+    /// * `text` - The text content that becomes the element's only text node.
+    ///
+    /// # Returns
+    /// * `AnyResult<(), AnyError>` - Ok on success, or an error if the content could not be stored.
+    pub fn set_text_mut(&mut self, text: &str) -> AnyResult<(), AnyError> {
+        if let Some(contents) = &mut self.child_contents {
+            contents.retain(|content| !matches!(content, XmlElementContentType::Text(_)));
+        }
+        self.add_child_content_mut(XmlElementContentType::Text(text.to_owned()))
+    }
+
     /// Adds a comment node to this element's contents.
     ///
     /// This method inserts XML comments (`<!-- comment -->`) into the element. Comments are
@@ -269,17 +282,17 @@ impl XmlElement {
     /// independent of the alias actually used in the document.
     ///
     /// # Arguments
-    /// * `ns_declaration` - The namespace declaration whose URI identifies the attribute.
     /// * `local_name` - The attribute local name without prefix.
+    /// * `ns_declaration` - The namespace declaration whose URI identifies the attribute.
     ///
     /// # Returns
     /// * `Option<&XmlAttribute>` - A reference to the attribute if found, or None.
-    pub fn get_attribute_by_ns(
+    pub fn get_attribute_ns(
         &self,
+        attr_name: &str,
         ns_declaration: &NamespaceDeclaration,
-        local_name: &str,
     ) -> Option<&XmlAttribute> {
-        self.get_attribute_by_uri(ns_declaration.uri, local_name)
+        self.get_attribute_by_uri(ns_declaration.uri, attr_name)
     }
 
     /// Retrieves an attribute by its namespace URI and local name.
@@ -324,46 +337,22 @@ impl XmlElement {
             .0
     }
 
-    /// Retrieves an attribute by its local name, ignoring namespaces.
+    /// Prefer [`XmlElement::get_attribute_ns`] for round-trippable namespaces.
     ///
-    /// The first attribute whose local name matches is returned regardless of its prefix.
-    ///
-    /// # Recommendation
-    /// For namespaced attributes prefer [`XmlElement::get_attribute_by_ns`], which matches by
-    /// URI and is unaffected by which alias the document uses.
+    /// Retrieves an attribute matched by `name`; a prefixed `name` is matched by its namespaced
+    /// name, otherwise the first attribute with that local name is returned regardless of prefix.
     ///
     /// # Arguments
-    /// * `name` - The local name of the attribute to retrieve.
+    /// * `name` - The attribute name to retrieve, optionally namespaced (e.g., "ns:attr").
     ///
     /// # Returns
     /// * `Option<&XmlAttribute>` - A reference to the attribute if found, or None.
     pub fn get_attribute(&self, name: &str) -> Option<&XmlAttribute> {
-        if let Some(attributes) = self.attributes.as_ref() {
-            attributes.iter().find(|item| item.get_name() == name)
-        } else {
-            None
-        }
-    }
-
-    /// Retrieves an attribute by its exact namespaced name.
-    ///
-    /// Matches the stored `prefix:local` string literally, so it only finds the attribute
-    /// when the document uses the same alias.
-    ///
-    /// # Recommendation
-    /// Prefer [`XmlElement::get_attribute_by_ns`], which matches by URI and tolerates any alias.
-    ///
-    /// # Arguments
-    /// * `name_ns` - The namespaced name of the attribute to retrieve (e.g., "ns:attr").
-    ///
-    /// # Returns
-    /// * `Option<&XmlAttribute>` - A reference to the attribute if found, or None.
-    pub fn get_attribute_ns(&self, name_ns: &str) -> Option<&XmlAttribute> {
-        if let Some(attributes) = self.attributes.as_ref() {
-            attributes.iter().find(|item| item.get_ns_name() == name_ns)
-        } else {
-            None
-        }
+        let match_by_ns = name.contains(':');
+        self.attributes
+            .as_ref()?
+            .iter()
+            .find(|item| Self::attribute_name_matches(item, name, match_by_ns))
     }
 
     /// Gets the unique node ID of this element.
@@ -461,41 +450,24 @@ impl XmlElement {
         Ok(count)
     }
 
-    /// Finds the first child element with the given local tag name.
+    /// Prefer [`XmlElement::find_first_child_ns`] for round-trippable namespaces.
+    ///
+    /// Finds the first child element matching `tag`; a prefixed `tag` is matched by its
+    /// namespaced name, otherwise by local name.
     ///
     /// # Arguments
-    /// * `tag` - The local tag name to search for.
+    /// * `tag` - The tag name to search for, optionally namespaced (e.g., "ns:tag").
     ///
     /// # Returns
     /// * `Option<NodeId>` - The NodeId of the first matching child, or None if not found.
     pub fn find_first_child(&self, tag: &str) -> Option<NodeId> {
-        // Check if contents exist, then find the first child element with matching tag
+        let match_by_ns = tag.contains(':');
         self.child_contents
             .as_ref()?
             .iter()
             .find_map(|content| match content {
-                XmlElementContentType::Element((child_id, child_tag, _)) if child_tag == tag => {
-                    Some(*child_id)
-                }
-                _ => None,
-            })
-    }
-
-    /// Finds the first child element with the given namespaced tag name.
-    ///
-    /// # Arguments
-    /// * `tag_ns` - The namespaced tag name to search for (e.g., "ns:tag").
-    ///
-    /// # Returns
-    /// * `Option<NodeId>` - The NodeId of the first matching child, or None if not found.
-    pub fn find_first_child_ns(&self, tag_ns: &str) -> Option<NodeId> {
-        // Check if contents exist, then find the first child element with matching tag
-        self.child_contents
-            .as_ref()?
-            .iter()
-            .find_map(|content| match content {
-                XmlElementContentType::Element((child_id, _, child_tag_ns))
-                    if child_tag_ns == tag_ns =>
+                XmlElementContentType::Element((child_id, child_tag, child_tag_ns))
+                    if Self::child_tag_matches(child_tag, child_tag_ns, tag, match_by_ns) =>
                 {
                     Some(*child_id)
                 }
@@ -503,28 +475,60 @@ impl XmlElement {
             })
     }
 
-    /// Finds all child elements with the given local tag name.
+    /// Finds the first child element whose alias is resolved from `ns_declaration` in this
+    /// element's scope and whose local name matches `local_name`.
     ///
     /// # Arguments
-    /// * `tag` - The local tag name to search for.
+    /// * `local_name` - The local tag name without prefix.
+    /// * `ns_declaration` - The namespace declaration identifying the tag's namespace.
+    ///
+    /// # Returns
+    /// * `Option<NodeId>` - The NodeId of the first matching child, or None if not found.
+    pub fn find_first_child_ns(
+        &self,
+        local_name: &str,
+        ns_declaration: &NamespaceDeclaration,
+    ) -> Option<NodeId> {
+        let tag_ns = self.build_scoped_ns_name(local_name, ns_declaration);
+        self.child_contents
+            .as_ref()?
+            .iter()
+            .find_map(|content| match content {
+                XmlElementContentType::Element((child_id, _, child_tag_ns))
+                    if *child_tag_ns == tag_ns =>
+                {
+                    Some(*child_id)
+                }
+                _ => None,
+            })
+    }
+
+    /// Prefer [`XmlElement::find_all_child_ns`] for round-trippable namespaces.
+    ///
+    /// Finds all child elements matching `tag`; a prefixed `tag` is matched by its namespaced
+    /// name, otherwise by local name.
+    ///
+    /// # Arguments
+    /// * `tag` - The tag name to search for, optionally namespaced (e.g., "ns:tag").
     ///
     /// # Returns
     /// * `Option<Vec<NodeId>>` - A vector of matching child NodeIds, or None if none found.
     pub fn find_all_child(&self, tag: &str) -> Option<Vec<NodeId>> {
-        // Collect all child elements with matching tag into a vector
+        let match_by_ns = tag.contains(':');
         let childs: Vec<NodeId> = self
             .child_contents
             .as_ref()?
             .iter()
             .filter_map(|content| match content {
-                XmlElementContentType::Element((child_id, child_tag, _)) if child_tag == tag => {
+                XmlElementContentType::Element((child_id, child_tag, child_tag_ns))
+                    if Self::child_tag_matches(child_tag, child_tag_ns, tag, match_by_ns) =>
+                {
                     Some(*child_id)
                 }
                 _ => None,
             })
             .collect();
 
-        // Return None if no matching children found
         if childs.is_empty() {
             None
         } else {
@@ -532,22 +536,28 @@ impl XmlElement {
         }
     }
 
-    /// Finds all child elements with the given namespaced tag name.
+    /// Finds all child elements whose alias is resolved from `ns_declaration` in this element's
+    /// scope and whose local name matches `local_name`.
     ///
     /// # Arguments
-    /// * `tag_ns` - The namespaced tag name to search for (e.g., "ns:tag").
+    /// * `local_name` - The local tag name without prefix.
+    /// * `ns_declaration` - The namespace declaration identifying the tag's namespace.
     ///
     /// # Returns
     /// * `Option<Vec<NodeId>>` - A vector of matching child NodeIds, or None if none found.
-    pub fn find_all_child_ns(&self, tag_ns: &str) -> Option<Vec<NodeId>> {
-        // Collect all child elements with matching tag into a vector
+    pub fn find_all_child_ns(
+        &self,
+        local_name: &str,
+        ns_declaration: &NamespaceDeclaration,
+    ) -> Option<Vec<NodeId>> {
+        let tag_ns = self.build_scoped_ns_name(local_name, ns_declaration);
         let childs: Vec<NodeId> = self
             .child_contents
             .as_ref()?
             .iter()
             .filter_map(|content| match content {
                 XmlElementContentType::Element((child_id, _, child_tag_ns))
-                    if child_tag_ns == tag_ns =>
+                    if *child_tag_ns == tag_ns =>
                 {
                     Some(*child_id)
                 }
@@ -555,7 +565,6 @@ impl XmlElement {
             })
             .collect();
 
-        // Return None if no matching children found
         if childs.is_empty() {
             None
         } else {
@@ -580,6 +589,149 @@ impl XmlElement {
             }
         }
         Ok(None)
+    }
+
+    /// Gets the namespace prefix applied to this element's tag, if any.
+    ///
+    /// # Returns
+    /// * `Option<String>` - The prefix (e.g., "ns"), or None when the tag is unprefixed.
+    pub fn get_prefix(&self) -> Option<String> {
+        self.ns_alias.clone().filter(|alias| !alias.is_empty())
+    }
+
+    /// Resolves the namespace URI bound to this element's tag in its own scope.
+    ///
+    /// # Returns
+    /// * `Option<String>` - The namespace URI, or None when the tag is in no namespace.
+    pub fn get_namespace_uri(&self) -> Option<String> {
+        let alias = self.ns_alias.as_deref().unwrap_or("");
+        self.resolve_alias_to_uri(alias)
+    }
+
+    /// Prefer [`XmlElement::has_attribute_ns`] for round-trippable namespaces.
+    ///
+    /// Reports whether an attribute matching `name` exists; a prefixed `name` is matched by its
+    /// namespaced name, otherwise by local name.
+    ///
+    /// # Arguments
+    /// * `name` - The attribute name to check, optionally namespaced (e.g., "ns:attr").
+    ///
+    /// # Returns
+    /// * `bool` - True when a matching attribute exists.
+    pub fn has_attribute(&self, name: &str) -> bool {
+        self.get_attribute(name).is_some()
+    }
+
+    /// Reports whether an attribute resolved from `ns_declaration` with local name `local_name`
+    /// exists, matching by URI independently of the alias used.
+    ///
+    /// # Arguments
+    /// * `attr_name` - The attribute local name without prefix.
+    /// * `ns_declaration` - The namespace declaration identifying the attribute's namespace.
+    ///
+    /// # Returns
+    /// * `bool` - True when a matching attribute exists.
+    pub fn has_attribute_ns(&self, attr_name: &str, ns_declaration: &NamespaceDeclaration) -> bool {
+        self.get_attribute_ns(attr_name, ns_declaration).is_some()
+    }
+
+    /// Prefer [`XmlElement::get_attribute_value_ns`] for round-trippable namespaces.
+    ///
+    /// Retrieves the value of the attribute matching `name`; a prefixed `name` is matched by its
+    /// namespaced name, otherwise by local name.
+    ///
+    /// # Arguments
+    /// * `name` - The attribute name to read, optionally namespaced (e.g., "ns:attr").
+    ///
+    /// # Returns
+    /// * `Option<&str>` - The attribute value if found, or None.
+    pub fn get_attribute_value(&self, name: &str) -> Option<&str> {
+        self.get_attribute(name)
+            .map(|attribute| attribute.get_value())
+    }
+
+    /// Retrieves the value of the attribute resolved from `ns_declaration` with local name
+    /// `local_name`, matching by URI independently of the alias used.
+    ///
+    /// # Arguments
+    /// * `attr_name` - The attribute local name without prefix.
+    /// * `ns_declaration` - The namespace declaration identifying the attribute's namespace.
+    ///
+    /// # Returns
+    /// * `Option<&str>` - The attribute value if found, or None.
+    pub fn get_attribute_value_ns(
+        &self,
+        attr_name: &str,
+        ns_declaration: &NamespaceDeclaration,
+    ) -> Option<&str> {
+        self.get_attribute_ns(attr_name, ns_declaration)
+            .map(|attribute| attribute.get_value())
+    }
+
+    /// Concatenates the text of every direct text node of this element.
+    ///
+    /// # Returns
+    /// * `String` - The joined text, empty when the element holds no direct text.
+    pub fn get_text_content(&self) -> String {
+        let mut text = String::new();
+        if let Some(contents) = &self.child_contents {
+            for content in contents {
+                if let XmlElementContentType::Text(value) = content {
+                    text.push_str(value);
+                }
+            }
+        }
+        text
+    }
+
+    /// Retrieves the node IDs of all direct child elements, in document order.
+    ///
+    /// # Returns
+    /// * `Option<Vec<NodeId>>` - The child element IDs, or None when there are none.
+    pub fn get_child_element_ids(&self) -> Option<Vec<NodeId>> {
+        let ids: Vec<NodeId> = self
+            .child_contents
+            .as_ref()?
+            .iter()
+            .filter_map(|content| match content {
+                XmlElementContentType::Element((child_id, _, _)) => Some(*child_id),
+                _ => None,
+            })
+            .collect();
+        if ids.is_empty() {
+            None
+        } else {
+            Some(ids)
+        }
+    }
+
+    /// Gets the node ID of the first direct child element.
+    ///
+    /// # Returns
+    /// * `Option<NodeId>` - The first child element ID, or None when there are none.
+    pub fn get_first_child_element(&self) -> Option<NodeId> {
+        self.child_contents
+            .as_ref()?
+            .iter()
+            .find_map(|content| match content {
+                XmlElementContentType::Element((child_id, _, _)) => Some(*child_id),
+                _ => None,
+            })
+    }
+
+    /// Gets the node ID of the last direct child element.
+    ///
+    /// # Returns
+    /// * `Option<NodeId>` - The last child element ID, or None when there are none.
+    pub fn get_last_child_element(&self) -> Option<NodeId> {
+        self.child_contents
+            .as_ref()?
+            .iter()
+            .rev()
+            .find_map(|content| match content {
+                XmlElementContentType::Element((child_id, _, _)) => Some(*child_id),
+                _ => None,
+            })
     }
 }
 
@@ -860,6 +1012,43 @@ impl XmlElement {
         self.child_contents = None;
     }
 
+    /// Resolves `local_name` + `ns_declaration` into the namespaced name used inside this scope.
+    fn build_scoped_ns_name(
+        &self,
+        local_name: &str,
+        ns_declaration: &NamespaceDeclaration,
+    ) -> String {
+        let (alias, _) = ns_declaration.resolve_in(&self.namespace_context.borrow());
+        if alias.is_empty() {
+            local_name.to_owned()
+        } else {
+            format!("{}:{}", alias, local_name)
+        }
+    }
+
+    /// Matches an attribute against `name`, by namespaced name when `match_by_ns`, else local name.
+    fn attribute_name_matches(attribute: &XmlAttribute, name: &str, match_by_ns: bool) -> bool {
+        if match_by_ns {
+            attribute.get_ns_name() == name
+        } else {
+            attribute.get_name() == name
+        }
+    }
+
+    /// Matches a child tag against `tag`, by namespaced name when `match_by_ns`, else local name.
+    fn child_tag_matches(
+        child_tag: &str,
+        child_tag_ns: &str,
+        tag: &str,
+        match_by_ns: bool,
+    ) -> bool {
+        if match_by_ns {
+            child_tag_ns == tag
+        } else {
+            child_tag == tag
+        }
+    }
+
     /// Builds a namespaced [`XmlAttribute`] whose alias is resolved from `ns_declaration`.
     ///
     /// When the URI is not yet in scope the binding is declared, promoting the element to its
@@ -1054,39 +1243,21 @@ impl XmlElement {
         }
     }
 
-    /// Checks if this element has an attribute with the given name and value.
+    /// Reports whether an attribute matches the given name and value.
     ///
     /// # Arguments
-    /// * `attr_name` - The name of the attribute to check.
+    /// * `attr_name` - The name of the attribute to check, optionally namespaced.
     /// * `attr_value` - The expected value of the attribute.
     ///
     /// # Returns
     /// * `bool` - True if the element has an attribute with the given name and value.
-    pub(crate) fn has_attribute(&self, attr_name: &str, attr_value: &str) -> bool {
+    pub(crate) fn attribute_value_matches(&self, attr_name: &str, attr_value: &str) -> bool {
+        let match_by_ns = attr_name.contains(':');
         if let Some(attributes) = &self.attributes {
-            // Check if any attribute matches both name and value
-            attributes
-                .iter()
-                .any(|a| a.get_name() == attr_name && a.get_value() == attr_value)
-        } else {
-            false
-        }
-    }
-
-    /// Checks if this element has an attribute with the given name and value.
-    ///
-    /// # Arguments
-    /// * `attr_name` - The name of the attribute to check.
-    /// * `attr_value` - The expected value of the attribute.
-    ///
-    /// # Returns
-    /// * `bool` - True if the element has an attribute with the given name and value.
-    pub(crate) fn has_attribute_ns(&self, attr_name_ns: &str, attr_value: &str) -> bool {
-        if let Some(attributes) = &self.attributes {
-            // Check if any attribute matches both name and value
-            attributes
-                .iter()
-                .any(|a| a.get_ns_name() == attr_name_ns && a.get_value() == attr_value)
+            attributes.iter().any(|a| {
+                Self::attribute_name_matches(a, attr_name, match_by_ns)
+                    && a.get_value() == attr_value
+            })
         } else {
             false
         }
